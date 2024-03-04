@@ -16,7 +16,7 @@ import {
 } from '@sage-bionetworks/synapse-types'
 import { displayToast } from '../ToastMessage'
 import { CustomControlCallbackData } from '../SynapseTable/TopLevelControls/TopLevelControls'
-import { QUERY_FILTERS_LOCAL_STORAGE_KEY } from '../../utils/functions/SqlFunctions'
+import { QUERY_FILTERS_SESSION_STORAGE_KEY } from '../../utils/functions/SqlFunctions'
 import { SynapseClient } from '../../index'
 import { QueryWrapperSynapsePlotRowClickEvent } from './QueryWrapperSynapsePlot'
 
@@ -56,24 +56,20 @@ const handlePlotClick = (event: QueryWrapperSynapsePlotRowClickEvent) => {
 export const Cards: Story = {
   args: {
     name: 'Tools',
-    sql: 'SELECT * FROM syn26438037',
+    sql: 'SELECT * FROM syn51730943',
     customPlots: [
       {
         query:
-          'SELECT resourceType, count(resourceType) FROM syn26438037 GROUP BY resourceType ',
+          'SELECT resourceType, count(resourceType) FROM syn51730943 GROUP BY resourceType ',
         type: 'bar',
         title: 'Resource Type',
         onCustomPlotClick: handlePlotClick,
       },
     ],
     limit: 5,
-    defaultShowFacetVisualization: false,
+    defaultShowPlots: false,
     defaultShowSearchBox: true,
     shouldDeepLink: true,
-    searchConfiguration: {
-      fullTextSearchHelpURL:
-        'https://help.nf.synapse.org/NFdocs/Tips-for-Search.2640478225.html',
-    },
     cardConfiguration: {
       type: GENERIC_CARD,
       titleLinkConfig: {
@@ -82,15 +78,23 @@ export const Cards: Story = {
         URLColumnName: 'resourceId',
         matchColumnName: 'resourceId',
         overrideLinkURLColumnName: 'biobankURL',
-        // target: TargetEnum.NEW_WINDOW
       },
       secondaryLabelLimit: 4,
+      labelLinkConfig: [
+        {
+          isMarkdown: true,
+          matchColumnName: 'investigatorWebsite',
+        },
+      ],
       genericCardSchema: {
         type: EXPERIMENTAL_TOOL,
         title: 'resourceName',
         subTitle: 'resourceType',
         description: 'description',
         secondaryLabels: [
+          'investigatorName',
+          'institution',
+          'investigatorWebsite',
           'rrid',
           'synonyms',
           'cellLineCategory',
@@ -109,16 +113,9 @@ export const Cards: Story = {
           'tumorType',
           'specimenFormat',
           'specimenType',
+          'dateModified',
         ],
       },
-      labelLinkConfig: [
-        {
-          isMarkdown: true,
-          matchColumnName: 'rrid',
-          tooltipText:
-            'This is to demo a custom tooltip that describes column data',
-        },
-      ],
     },
   },
 }
@@ -233,71 +230,36 @@ export const SendToCavatica: Story = {
     hideSqlEditorControl: false,
     shouldDeepLink: false,
     showExportToCavatica: true,
-    cavaticaHelpURL:
-      'https://staging.eliteportal.synapse.org/Limited%20Data%20Commons',
   },
 }
 
-export const CombinedRangeFacetsDemo: Story = {
-  args: {
-    sql: 'SELECT * FROM syn52211295',
-    combineRangeFacetConfig: {
-      label: 'Age',
-      minFacetColumn: 'minAge',
-      maxFacetColumn: 'maxAge',
-    },
-    tableConfiguration: {},
-  },
+const getAllIDs = async (event: CustomControlCallbackData) => {
+  // get all ids
+  const ids: string[] = []
+  event.request!.query.sql = 'select id from syn51186974'
+  const results = await SynapseClient.getFullQueryTableResults(event.request!)
+  results.queryResult?.queryResults.rows.map(row => {
+    if (row.values && row.values[0]) ids.push(row.values[0])
+  })
+  return ids
 }
 
-const handleRowSelectionCustomCommandClick = (
+const handleRowSelectionCustomCommandClick = async (
   event: CustomControlCallbackData,
 ) => {
+  const isSelection = event.selectedRows && event.selectedRows.length > 0
   displayToast(
     `Custom action applied to ${
-      event.selectedRows!.length
+      isSelection ? event.selectedRows!.length : 'all'
     } rows (see js console for more information)`,
   )
   console.log('Rows selected:')
   console.log(event.selectedRows)
   const idColIndex = event.data?.columnModels?.findIndex(cm => cm.name === 'id')
-  const localStorageFilter: ColumnSingleValueQueryFilter = {
-    concreteType:
-      'org.sagebionetworks.repo.model.table.ColumnSingleValueQueryFilter',
-    columnName: 'id',
-    operator: ColumnSingleValueFilterOperator.IN,
-    values: event.selectedRows!.map(row => row.values[idColIndex!]!),
-  }
-  localStorage.setItem(
-    QUERY_FILTERS_LOCAL_STORAGE_KEY('syn51186974-selectedfiles'),
-    JSON.stringify([localStorageFilter]),
-  )
-  console.log(
-    'Local Storage value set, refresh table to see additionalFilter QueryFilter being utilized',
-  )
-  // TODO: PORTALS-2682: event.refresh() should refresh the data but it currently doesn't
-  event.refresh()
-}
 
-const handleAllDataCustomCommandClick = async (
-  event: CustomControlCallbackData,
-) => {
-  displayToast(
-    `Custom action applied to all results (see js console for more information)`,
-  )
-
-  const ids: string[] = []
-  if (event.request) {
-    console.log('Query request is available')
-    console.log(event.request)
-    // get all ids
-    event.request.query.sql = 'select id from syn51186974'
-    const results = await SynapseClient.getFullQueryTableResults(event.request)
-    results.queryResult?.queryResults.rows.map(row => {
-      if (row.values && row.values[0]) ids.push(row.values[0])
-    })
-  }
-
+  const ids = isSelection
+    ? event.selectedRows!.map(row => row.values[idColIndex!]!)
+    : await getAllIDs(event)
   const localStorageFilter: ColumnSingleValueQueryFilter = {
     concreteType:
       'org.sagebionetworks.repo.model.table.ColumnSingleValueQueryFilter',
@@ -306,13 +268,13 @@ const handleAllDataCustomCommandClick = async (
     values: ids,
   }
   localStorage.setItem(
-    QUERY_FILTERS_LOCAL_STORAGE_KEY('syn51186974-selectedfiles'),
+    QUERY_FILTERS_SESSION_STORAGE_KEY('syn51186974-selectedfiles'),
     JSON.stringify([localStorageFilter]),
   )
   console.log(
     'Local Storage value set, refresh table to see additionalFilter QueryFilter being utilized',
   )
-  // refresh causes the component to remount, which picks up the new filter from localstorage
+  // TODO: PORTALS-2682: event.refresh() should refresh the data but it currently doesn't
   event.refresh()
 }
 
@@ -330,21 +292,14 @@ export const TableRowSelectionWithCustomCommand: Story = {
     // while the participant view of the same Virtual Table should have another.
     // The custom commands should add filters that target the other perspective
     // (file command adds filter for participant perspective, participant command adds filter for the file perspective)
-    additionalFiltersLocalStorageKey: 'syn51186974-selectedfiles',
+    additionalFiltersSessionStorageKey: 'syn51186974-selectedfiles',
     customControls: [
       {
-        buttonText: 'Row Selection Custom Command',
+        buttonText: 'Row Custom Command',
         onClick: event => {
           handleRowSelectionCustomCommandClick(event)
         },
-        isRowSelectionSupported: true,
-      },
-      {
-        buttonText: 'All Results Custom Command',
-        onClick: event => {
-          handleAllDataCustomCommandClick(event)
-        },
-        isRowSelectionSupported: false,
+        buttonID: 'RowSelectionCustomCommandButtonID',
       },
     ],
   },
@@ -399,6 +354,12 @@ export const Dataset: Story = {
     hideSqlEditorControl: false,
     shouldDeepLink: false,
     showExportToCavatica: true,
+    helpConfiguration: [
+      {
+        columnName: 'id',
+        helpText: 'This represents the unique ID in Synapse',
+      },
+    ],
   },
 }
 

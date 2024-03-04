@@ -21,7 +21,8 @@ type Story = StoryObj<typeof meta>
 export const GenericCard: Story = {
   args: {
     sql: 'SELECT * FROM syn22095937.4 order by authors asc',
-    limit: 2,
+    initialLimit: 2,
+    limit: 5,
     type: GENERIC_CARD,
     genericCardSchema: {
       type: PUBLICATION,
@@ -54,7 +55,7 @@ export const EmptyResults: Story = {
 
 export const ObservationCard: Story = {
   args: {
-    sql: `SELECT "Observation Submitter Name" as "submitterName", Synapse_id as "submitterUserId", "Observation Time" as "time", "Observation Time Units" as "timeUnits", "Observation Text" as "text", "Observation Type" as "tag" FROM syn26344832 WHERE "Observation Time" IS NOT NULL`,
+    sql: `SELECT * FROM syn51735464`,
     type: OBSERVATION_CARD,
     limit: 3,
   },

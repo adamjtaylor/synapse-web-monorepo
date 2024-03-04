@@ -12,30 +12,37 @@ import { displayToast } from '../ToastMessage/ToastMessage'
 export type TwoFactorAuthSettingsPanelProps = {
   onRegenerateBackupCodes: () => void
   onBeginTwoFactorEnrollment: () => void
+  hideTitle?: boolean
 }
 
 export default function TwoFactorAuthSettingsPanel(
   props: TwoFactorAuthSettingsPanelProps,
 ) {
-  const { onRegenerateBackupCodes, onBeginTwoFactorEnrollment } = props
+  const {
+    onRegenerateBackupCodes,
+    onBeginTwoFactorEnrollment,
+    hideTitle = false,
+  } = props
   const { data: status, isLoading: isLoadingStatus } =
     useGetTwoFactorEnrollmentStatus()
   const isActivated = status?.status === 'ENABLED'
 
-  const { mutate: disable2FA, isLoading: isLoadingMutation } =
+  const { mutate: disable2FA, isPending: disable2FAIsPending } =
     useDisableTwoFactorAuth({
       onSuccess: () => {
         displayToast('2FA removed from this account', 'info')
       },
     })
 
-  const isLoading = isLoadingStatus || isLoadingMutation
+  const isLoading = isLoadingStatus || disable2FAIsPending
 
   return (
     <Box>
-      <Typography variant={'headline2'}>
-        Two-factor Authentication (2FA)
-      </Typography>
+      {!hideTitle && (
+        <Typography variant={'headline2'} role={'heading'}>
+          Two-factor Authentication (2FA)
+        </Typography>
+      )}
       <ConditionalWrapper condition={isLoading} wrapper={Skeleton}>
         <Typography
           variant={'body1'}

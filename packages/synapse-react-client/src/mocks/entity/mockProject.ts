@@ -1,6 +1,7 @@
 import {
   ACCESS_TYPE,
   AnnotationsValueType,
+  DoiAssociation,
   EntityBundle,
   EntityHeader,
   EntityJson,
@@ -15,10 +16,23 @@ import { MockEntityData } from './MockEntityData'
 import { generateProject } from '../faker/generateFakeEntity'
 import { times } from 'lodash-es'
 
-export const mockProjectIds = times(20).map(i => i + 10000)
+export const mockProjectIds = times(20).map(i => i + 10001)
 
-const MOCK_PROJECT_ID = `syn${mockProjectIds[0]}`
+const MOCK_PROJECT_ID = `syn10000`
 const MOCK_PROJECT_NAME = 'A Mock Project'
+
+export const mockDoiAssociation: DoiAssociation = {
+  associationId: '9606623',
+  etag: 'ddef9fe1-56b2-42f5-9a3c-db2d6f15401b',
+  doiUri: `10.7303/${MOCK_PROJECT_ID}`,
+  doiUrl: `https://repo-prod.prod.sagebase.org/repo/v1/doi/locate?id=${MOCK_PROJECT_ID}&type=ENTITY`,
+  objectId: MOCK_PROJECT_ID,
+  objectType: ObjectType.ENTITY,
+  associatedBy: `${MOCK_USER_ID}`,
+  associatedOn: '2021-01-04T15:42:18.000Z',
+  updatedBy: `${MOCK_USER_ID}`,
+  updatedOn: '2021-04-28T18:49:48.000Z',
+}
 
 const mockProjectEntity = {
   name: MOCK_PROJECT_NAME,
@@ -146,18 +160,7 @@ const mockProjectEntityBundle: EntityBundle = {
       },
     ],
   },
-  doiAssociation: {
-    associationId: '9606623',
-    etag: 'ddef9fe1-56b2-42f5-9a3c-db2d6f15401b',
-    doiUri: `10.7303/${MOCK_PROJECT_ID}`,
-    doiUrl: `https://repo-prod.prod.sagebase.org/repo/v1/doi/locate?id=${MOCK_PROJECT_ID}&type=ENTITY`,
-    objectId: MOCK_PROJECT_ID,
-    objectType: ObjectType.ENTITY,
-    associatedBy: `${MOCK_USER_ID}`,
-    associatedOn: '2021-01-04T15:42:18.000Z',
-    updatedBy: `${MOCK_USER_ID}`,
-    updatedOn: '2021-04-28T18:49:48.000Z',
-  },
+  doiAssociation: mockDoiAssociation,
   threadCount: 2,
   restrictionInformation: {
     restrictionLevel: RestrictionLevel.OPEN,
@@ -209,23 +212,20 @@ const mockProjectEntityData = {
   json: mockProjectJson,
 } satisfies MockEntityData<Project>
 
-export const mockProjects: Project[] = mockProjectIds.map(id => {
+const generatedProjectsEntityData = mockProjectIds.map(id => {
   if (`syn${id}` === MOCK_PROJECT_ID) {
-    return mockProjectEntity
+    return mockProjectEntityData
   }
-  return generateProject({ id: `syn${id}` })
+  return generateProject(undefined, id)
 })
 
-export const mockProjectsEntityData: MockEntityData<Project>[] =
-  mockProjects.map((p: Project): MockEntityData<Project> => {
-    if (p.id === MOCK_PROJECT_ID) {
-      return mockProjectEntityData
-    }
-    return {
-      id: p.id!,
-      name: p.name,
-      entity: p,
-    }
-  })
+export const mockProjects: Project[] = generatedProjectsEntityData.map(
+  projectData => projectData.entity,
+)
+
+export const mockProjectsEntityData: MockEntityData<Project>[] = [
+  mockProjectEntityData,
+  ...generatedProjectsEntityData,
+]
 
 export default mockProjectEntityData

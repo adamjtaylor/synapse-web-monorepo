@@ -1,12 +1,11 @@
-import React, { useState } from 'react'
-import { uniqueId as _uniqueId } from 'lodash-es'
+import React, { useId } from 'react'
 
 export type RadioGroupProps<T extends string | boolean | number = string> = {
-  options: { label: string; value: T }[]
-  id: string
+  options: { label: React.ReactNode; value: T }[]
   className?: string
   value?: T
   onChange: (value: T) => void
+  disabled?: boolean
 }
 
 export function RadioGroup<T extends string | boolean | number = string>(
@@ -21,11 +20,11 @@ export function RadioGroup<T extends string | boolean | number = string>(
       {props.options.map((option, index) => (
         <RadioOption<T>
           key={index.toString()}
-          groupId={props.id}
           label={option.label}
           value={option.value}
-          currentValue={props.value}
+          checked={option.value === props.value}
           onChange={props.onChange}
+          disabled={props.disabled}
         />
       ))}
     </div>
@@ -33,31 +32,33 @@ export function RadioGroup<T extends string | boolean | number = string>(
 }
 
 export type RadioOptionProps<T extends string | boolean | number = string> = {
-  groupId: string
-  label: string
+  label: React.ReactNode
   value: T
-  currentValue?: T
   style?: React.CSSProperties
   onChange: (value: T) => void
-}
+} & Omit<
+  React.HTMLProps<HTMLInputElement>,
+  'label' | 'value' | 'style' | 'onChange'
+>
 
 export function RadioOption<T extends string | boolean | number = string>(
   props: RadioOptionProps<T>,
 ) {
-  const [uniqueId] = useState(_uniqueId('src-radio-'))
+  const { value, label, onChange, style, ...inputProps } = props
+  const uniqueId = useId()
   return (
-    <div className={'radio'} onClick={() => props.onChange(props.value)}>
+    <div className={'radio'} onClick={() => onChange(value)}>
       <input
         id={uniqueId}
         type="radio"
         onChange={() => {
           // no-op -- change is handled by the div
         }}
-        checked={props.currentValue === props.value}
-        value={props.value.toString()}
+        value={String(value)}
+        {...inputProps}
       />
-      <label htmlFor={uniqueId} style={props.style}>
-        {props.label}
+      <label htmlFor={uniqueId} style={style}>
+        {label}
       </label>
     </div>
   )

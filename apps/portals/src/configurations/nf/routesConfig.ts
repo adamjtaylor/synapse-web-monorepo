@@ -21,7 +21,7 @@ import {
   organizationCardSchema,
   organizationDetailsPage,
   organizationDetailsPageLinkConfig,
-} from './organizations'
+} from './synapseConfigs/organizations'
 import {
   fundersSql,
   hackathonsSql,
@@ -67,7 +67,7 @@ const routes: GenericRoute[] = [
         outsideContainerClassName: 'home-spacer home-bg-dark',
         link: '/Explore/Studies',
         props: {
-          limit,
+          initialLimit: limit,
           columnAliases,
           sql: newStudiesSql,
           ...studyCardConfiguration,
@@ -85,46 +85,6 @@ const routes: GenericRoute[] = [
           useQueryResultUserData: true,
           // summaryLink: 'Explore/People',
           // summaryLinkText: 'Explore All People',
-        },
-      },
-      {
-        name: 'Ecosystem',
-        title: 'NF Grant Opportunities',
-        centerTitle: true,
-        outsideContainerClassName: 'home-spacer home-bg-dark',
-        props: {
-          config: [
-            {
-              title: "Children's Tumor Foundation",
-              ownerId: 'syn26451327',
-              wikiId: '614272',
-            },
-            {
-              title: 'Neurofibromatosis Therapeutic Acceleration Program',
-              ownerId: 'syn26451327',
-              wikiId: '614277',
-            },
-            {
-              title: 'Gilbert Family Foundation',
-              ownerId: 'syn26451327',
-              wikiId: '614275',
-            },
-            {
-              title: 'DoD CDMRP Neurofibromatosis Research Program',
-              ownerId: 'syn26451327',
-              wikiId: '614274',
-            },
-            {
-              title: 'DHART SPORE',
-              ownerId: 'syn26451327',
-              wikiId: '614273',
-            },
-            {
-              title: 'Neurofibromatosis Research Initiative',
-              ownerId: 'syn26451327',
-              wikiId: '614276',
-            },
-          ],
         },
       },
       {
@@ -382,16 +342,29 @@ const routes: GenericRoute[] = [
 
   {
     path: 'About',
-    exact: true,
-    synapseConfigArray: [
+    routes: [
       {
-        name: 'Markdown',
-        title: 'About',
-        props: {
-          ownerId: 'syn26451327',
-          wikiId: '614265',
-          loadingSkeletonRowCount: 20,
-        },
+        path: 'NF-OSI',
+        hideRouteFromNavbar: false,
+        synapseConfigArray: [
+          {
+            name: 'Markdown',
+            title: 'About',
+            props: {
+              ownerId: 'syn26451327',
+              wikiId: '614265',
+              loadingSkeletonRowCount: 20,
+            },
+          },
+        ],
+      },
+      {
+        displayName: 'Data Standards',
+        hideRouteFromNavbar: false,
+        path: undefined,
+        target: '_blank',
+        link: 'https://nf-osi.github.io/nf-metadata-dictionary/',
+        synapseConfigArray: [],
       },
     ],
   },

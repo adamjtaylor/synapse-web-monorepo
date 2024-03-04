@@ -1,8 +1,8 @@
-import React, { useCallback, useState } from 'react'
-import type RJSFForm from '@rjsf/core'
+import React, { useCallback, useMemo, useState } from 'react'
+import RJSFForm from '@rjsf/core'
 import Form from '@rjsf/mui'
 import validator from '@rjsf/validator-ajv8'
-import { JSONSchema7 } from 'json-schema'
+import { JSONSchema7, JSONSchema7Definition } from 'json-schema'
 import ArrayFieldDescriptionTemplate from '../SchemaDrivenAnnotationEditor/template/ArrayFieldDescriptionTemplate'
 import ArrayFieldItemTemplate from '../SchemaDrivenAnnotationEditor/template/ArrayFieldItemTemplate'
 import ArrayFieldTemplate from '../SchemaDrivenAnnotationEditor/template/ArrayFieldTemplate'
@@ -17,50 +17,72 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { parse, ParseError } from 'papaparse'
-import { RJSFSchema } from '@rjsf/utils'
-type JSONArrayEditorProps = {
-  value: string[]
-  onChange: (newValue: string[]) => void
-  onSubmit: (formData: string[]) => void
+import { GenericObjectType, RJSFSchema } from '@rjsf/utils'
+import TextWidget from '../SchemaDrivenAnnotationEditor/widget/TextWidget'
+import { DateTimeWidget } from '../SchemaDrivenAnnotationEditor/widget/DateTimeWidget'
+import { SelectWidget } from '../SchemaDrivenAnnotationEditor/widget/SelectWidget'
+import { BooleanWidget } from '../SchemaDrivenAnnotationEditor/widget/BooleanWidget'
+import { getTransformErrors } from '../SchemaDrivenAnnotationEditor/AnnotationEditorUtils'
+import ErrorListTemplate from '../SchemaDrivenAnnotationEditor/template/ErrorListTemplate'
+import useParseCsv from './useParseCsv'
+import { ParseError } from 'papaparse'
+
+const DEFAULT_ARRAY_ITEM_DEFINITION: JSONSchema7Definition = { type: 'string' }
+
+export type JSONArrayEditorProps<T = unknown> = {
+  value?: T[]
+  arrayItemDefinition?: JSONSchema7Definition
+  onChange: (newValue: T[]) => void
+  onSubmit: (formData: T[]) => void
+  formRef?: React.Ref<RJSFForm<T, RJSFSchema, GenericObjectType>>
 }
 
-const arraySchema: JSONSchema7 = {
-  $schema: 'http://json-schema.org/draft-07/schema#',
-  type: 'array',
-  items: {
-    type: 'string',
-  },
+function getSchema(
+  definition: JSONSchema7Definition = DEFAULT_ARRAY_ITEM_DEFINITION,
+): JSONSchema7 {
+  return {
+    $schema: 'http://json-schema.org/draft-07/schema#',
+    type: 'array',
+    items: definition,
+  }
 }
 
-const JSONArrayEditor = React.forwardRef(function JSONArrayEditor(
-  props: JSONArrayEditorProps,
-  ref: React.Ref<RJSFForm<any, RJSFSchema, any>>,
-) {
-  const { value, onChange, onSubmit } = props
+function JSONArrayEditor<T = unknown>(props: JSONArrayEditorProps<T>) {
+  const {
+    value = [],
+    onChange,
+    onSubmit,
+    arrayItemDefinition = DEFAULT_ARRAY_ITEM_DEFINITION,
+    formRef,
+  } = props
   const [showPasteNewValuesForm, setShowPasteNewValuesForm] = useState(false)
   const [pastedValues, setPastedValues] = useState('')
   const [parseErrors, setParseErrors] = useState<ParseError[]>([])
-  const addPastedValuesToArray = useCallback(() => {
+  const schema = useMemo(
+    () => getSchema(arrayItemDefinition),
+    [arrayItemDefinition],
+  )
+
+  const { parse } = useParseCsv({
+    jsonSchemaDefinition: arrayItemDefinition,
+  })
+  const addPastedValuesToArray = useCallback(async () => {
     if (pastedValues) {
-      parse<string[]>(pastedValues, {
-        complete: result => {
-          if (result.errors.length > 0) {
-            setParseErrors(result.errors)
-          } else {
-            onChange([...value, ...result.data[0]])
-            setParseErrors([])
-            setPastedValues('')
-            setShowPasteNewValuesForm(false)
-          }
-        },
-      })
-    } else {
-      setParseErrors([])
-      setPastedValues('')
-      setShowPasteNewValuesForm(false)
+      try {
+        const parsedValues = (await parse(pastedValues)) as T[]
+        onChange([...value, ...parsedValues])
+        setParseErrors([])
+        setPastedValues('')
+        setShowPasteNewValuesForm(false)
+      } catch (e) {
+        setParseErrors(e as ParseError[])
+      }
     }
-  }, [onChange, pastedValues, value])
+  }, [onChange, pastedValues, value, parse])
+
+  const transformErrors = useMemo(() => {
+    return getTransformErrors()
+  }, [])
 
   return (
     <Box
@@ -74,9 +96,10 @@ const JSONArrayEditor = React.forwardRef(function JSONArrayEditor(
       }}
     >
       <Form
-        ref={ref}
-        schema={arraySchema}
+        ref={formRef}
+        schema={schema}
         className="JsonSchemaForm"
+        noHtml5Validate
         uiSchema={{
           'ui:submitButtonOptions': {
             norender: true,
@@ -84,6 +107,9 @@ const JSONArrayEditor = React.forwardRef(function JSONArrayEditor(
         }}
         validator={validator}
         formData={value}
+        formContext={{
+          allowRemovingLastItemInArray: true,
+        }}
         onChange={({ formData }) => onChange(formData)}
         onSubmit={({ formData }) => onSubmit(formData)}
         templates={{
@@ -92,6 +118,14 @@ const JSONArrayEditor = React.forwardRef(function JSONArrayEditor(
           ArrayFieldTemplate: ArrayFieldTemplate,
           ArrayFieldTitleTemplate: ArrayFieldTitleTemplate,
           ButtonTemplates: ButtonTemplate,
+          ErrorListTemplate: ErrorListTemplate,
+        }}
+        transformErrors={transformErrors}
+        widgets={{
+          TextWidget: TextWidget,
+          DateTimeWidget: DateTimeWidget,
+          SelectWidget: SelectWidget,
+          CheckboxWidget: BooleanWidget,
         }}
       />
       <Button onClick={() => setShowPasteNewValuesForm(true)}>
@@ -110,7 +144,13 @@ const JSONArrayEditor = React.forwardRef(function JSONArrayEditor(
           <Button onClick={() => setShowPasteNewValuesForm(false)}>
             Cancel
           </Button>
-          <Button onClick={addPastedValuesToArray}>Add</Button>
+          <Button
+            onClick={() => {
+              addPastedValuesToArray()
+            }}
+          >
+            Add
+          </Button>
         </Box>
         {parseErrors && parseErrors.length > 0 && (
           <Alert severity={'error'} sx={{ my: 2 }}>
@@ -124,7 +164,8 @@ const JSONArrayEditor = React.forwardRef(function JSONArrayEditor(
                     key={index}
                     variant={'smallText1'}
                   >
-                    At {error.row}: {error.message}
+                    {error.row ? `At ${error.row}: ` : ''}
+                    {error.message}
                   </Typography>
                 )
               })}
@@ -134,6 +175,6 @@ const JSONArrayEditor = React.forwardRef(function JSONArrayEditor(
       </Collapse>
     </Box>
   )
-})
+}
 
 export default JSONArrayEditor

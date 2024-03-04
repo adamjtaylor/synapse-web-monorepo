@@ -9,7 +9,7 @@ import { MOCK_REPO_ORIGIN } from '../src/utils/functions/getEndpoint'
 import isChromatic from 'chromatic/isChromatic'
 import { faker } from '@faker-js/faker'
 import { ThemeProvider } from '@mui/material'
-import { withThemeFromJSXProvider } from '@storybook/addon-styling'
+import { withThemeFromJSXProvider } from '@storybook/addon-themes'
 import {
   adKnowledgePortalPalette,
   arkPortalPalette,
@@ -109,7 +109,7 @@ initialize({
 })
 
 const fontLoader = async () => ({
-  fonts: await Promise.all([document.fonts.load('700 1em Lato')]),
+  fonts: await Promise.all([document.fonts.load('700 1em "DM Sans"')]),
 })
 
 export const loaders = [mswLoader]

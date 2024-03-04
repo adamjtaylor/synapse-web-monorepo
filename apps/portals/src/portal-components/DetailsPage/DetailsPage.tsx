@@ -114,7 +114,7 @@ export default function DetailsPage(props: DetailsPageProps) {
     searchParams = {},
     sqlOperator,
     showMenu = true,
-    additionalFiltersLocalStorageKey,
+    additionalFiltersSessionStorageKey,
   } = props
 
   useScrollOnMount()
@@ -122,7 +122,7 @@ export default function DetailsPage(props: DetailsPageProps) {
   const queryBundleRequest = React.useMemo(() => {
     const entityId = SynapseUtilityFunctions.parseEntityIdFromSqlStatement(sql)
     const additionalFilters = SynapseUtilityFunctions.getAdditionalFilters(
-      additionalFiltersLocalStorageKey ?? entityId,
+      additionalFiltersSessionStorageKey,
       searchParams,
       sqlOperator,
     )
@@ -229,7 +229,8 @@ const SynapseObject: React.FC<{
     return <></>
   } else if (
     columnType === ColumnTypeEnum.STRING_LIST ||
-    columnType === ColumnTypeEnum.INTEGER_LIST
+    columnType === ColumnTypeEnum.INTEGER_LIST ||
+    columnType === ColumnTypeEnum.ENTITYID_LIST
   ) {
     try {
       rawValue = JSON.parse(rawValue)
@@ -470,7 +471,7 @@ export const DetailsPageSynapseConfigArray: React.FC<{
       })}
     </>
   )
-  if (showMenu) {
+  if (showMenu && synapseConfigArray.length > 1) {
     return (
       <div className="DetailsPage">
         <div className="button-container">

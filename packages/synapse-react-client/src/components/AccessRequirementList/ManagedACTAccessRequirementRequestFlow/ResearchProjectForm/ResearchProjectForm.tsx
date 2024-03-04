@@ -46,12 +46,6 @@ export default function ResearchProjectForm(props: ResearchProjectFormProps) {
     useGetResearchProject(String(managedACTAccessRequirement.id), {
       // Infinite staleTime ensures this won't be refetched unless explicitly invalidated by the mutation
       staleTime: Infinity,
-      onError: e => {
-        console.log(
-          'RequestDataAccessStep1: Error getting research project data: ',
-          e,
-        )
-      },
     })
 
   // Populate the form with existing data if it exists
@@ -79,7 +73,7 @@ export default function ResearchProjectForm(props: ResearchProjectFormProps) {
     projectLead,
   ])
 
-  const { mutate, isLoading: isLoadingUpdate } = useUpdateResearchProject({
+  const { mutate, isPending: updateIsPending } = useUpdateResearchProject({
     onSuccess: data => {
       if (onSave) {
         onSave(data)
@@ -97,7 +91,7 @@ export default function ResearchProjectForm(props: ResearchProjectFormProps) {
     },
   })
 
-  const isLoading = isLoadingInitialData || isLoadingUpdate
+  const isLoading = isLoadingInitialData || updateIsPending
 
   const getErrorMessage = (reason: string = '') => {
     return (
@@ -193,7 +187,7 @@ export default function ResearchProjectForm(props: ResearchProjectFormProps) {
           disabled={isLoading}
           onClick={handleSubmit}
         >
-          {isLoadingUpdate ? 'Saving...' : 'Save changes'}
+          {updateIsPending ? 'Saving...' : 'Save changes'}
         </Button>
       </DialogActions>
     </>

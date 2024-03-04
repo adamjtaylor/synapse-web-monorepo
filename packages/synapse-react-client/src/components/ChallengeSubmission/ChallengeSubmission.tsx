@@ -5,25 +5,25 @@ import {
   useGetEntityAlias,
   useGetEntityChallenge,
   useGetEntityPermissions,
-  useGetUserSubmissionTeamsInfinite,
+  useGetUserSubmissionTeams,
   useUpdateEntityACL,
 } from '../../synapse-queries'
 import { useSynapseContext } from '../../utils'
 import {
   ACCESS_TYPE,
   Challenge,
+  Entity,
+  EntityType,
   Project,
+  PROJECT_CONCRETE_TYPE_VALUE,
   ResourceAccess,
   Team,
 } from '@sage-bionetworks/synapse-types'
 import { ErrorBanner, SynapseErrorBoundary } from '../error/ErrorBanner'
 import { useGetTeam } from '../../synapse-queries/team/useTeam'
 import { createEntity } from '../../synapse-client'
-import { PROJECT_CONCRETE_TYPE_VALUE } from '@sage-bionetworks/synapse-types'
 import SubmissionDirectoryList from './SubmissionDirectoryList'
 import ChallengeSubmissionStepper from './ChallengeSubmissionStepper'
-import { EntityType } from '@sage-bionetworks/synapse-types'
-import { Entity } from '@sage-bionetworks/synapse-types'
 
 export type EntityItem = Entity & {
   repositoryName?: string
@@ -73,21 +73,18 @@ export function ChallengeSubmission({
   const { data: userProfile, isLoading: isProfileLoading } =
     useGetCurrentUserProfile({
       enabled: isLoggedIn,
-      onError: () => {
-        setLoading(false)
-        setErrorMessage(`Error: Could not retrieve user profile`)
-      },
+      throwOnError: true,
     })
 
   // Retrieve the challenge associated with the projectId passed through props
   const { data: challenge } = useGetEntityChallenge(projectId, {
     enabled: isLoggedIn && !!projectId,
     refetchInterval: Infinity,
-    useErrorBoundary: true,
+    throwOnError: true,
   })
 
   // Determine whether or not the given user belongs to any submission teams
-  const { data: userSubmissionTeams } = useGetUserSubmissionTeamsInfinite(
+  const { data: userSubmissionTeams } = useGetUserSubmissionTeams(
     challenge?.id ?? EMPTY_ID,
     2,
   )
@@ -114,24 +111,22 @@ export function ChallengeSubmission({
   const { data: submissionTeam } = useGetTeam(submissionTeamId!, {
     enabled: !!submissionTeamId,
     refetchInterval: Infinity,
-    useErrorBoundary: true,
+    throwOnError: true,
   })
 
   const { data: entityAlias } = useGetEntityAlias(
     newProject?.alias ?? EMPTY_ID,
     {
       enabled: newProject !== undefined && !!challenge && !!submissionTeam,
-      onError: error => {
-        setLoading(false)
-        setProjectAliasFound(false)
-        setErrorMessage(error.reason)
-      },
+      throwOnError: true,
     },
   )
   useEffect(() => {
     if (entityAlias) {
       setProjectAliasFound(true)
       setChallengeProjectId(entityAlias.id)
+    } else {
+      setProjectAliasFound(false)
     }
   }, [entityAlias])
 
@@ -142,10 +137,7 @@ export function ChallengeSubmission({
   const { data: entityACL } = useGetEntityACL(challengeProjectId ?? EMPTY_ID, {
     enabled: !!challengeProjectId && isProjectNewlyCreated === true,
     refetchInterval: Infinity,
-    onError: error => {
-      setLoading(false)
-      setErrorMessage(error.reason)
-    },
+    throwOnError: true,
   })
 
   useEffect(() => {
@@ -177,10 +169,7 @@ export function ChallengeSubmission({
     {
       enabled: !!challengeProjectId,
       refetchInterval: Infinity,
-      onError: error => {
-        setLoading(false)
-        setErrorMessage(error.reason)
-      },
+      throwOnError: true,
     },
   )
 

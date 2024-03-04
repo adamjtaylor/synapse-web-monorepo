@@ -1,17 +1,16 @@
-import {
-  ColumnModel,
-  ColumnTypeEnum,
-  JsonSubColumnModel,
-} from '@sage-bionetworks/synapse-types'
+import { ColumnTypeEnum } from '@sage-bionetworks/synapse-types'
 import { atomWithReducer } from 'jotai/utils'
-import { SetOptional } from 'type-fest'
 import { cloneDeep } from 'lodash-es'
 import {
   canHaveMaxListLength,
-  canHaveRestrictedValues,
   canHaveSize,
   configureFacetsForType,
+  DEFAULT_STRING_SIZE,
 } from './TableColumnSchemaEditorUtils'
+import {
+  ColumnModelFormData,
+  JsonSubColumnModelFormData,
+} from './Validators/ColumnModelValidator'
 
 export function getIsAllSelected(formData: ColumnModelFormData[]) {
   return (
@@ -48,6 +47,7 @@ export function getDefaultColumnModelFormData(): ColumnModelFormData {
   return {
     name: '',
     columnType: ColumnTypeEnum.STRING,
+    maximumSize: DEFAULT_STRING_SIZE,
     isOriginallyDefaultColumn: false,
     isSelected: false,
   }
@@ -122,24 +122,6 @@ function moveSelectedItemsDown<T = unknown>(
     }
   }
   return newArr
-}
-
-export type JsonSubColumnModelFormData = JsonSubColumnModel & {
-  // add `isSelected` to the data object
-  isSelected: boolean
-}
-
-export type ColumnModelFormData = Omit<
-  SetOptional<ColumnModel, 'id'>,
-  'jsonSubColumns'
-> & {
-  // add `isSelected` to the data object
-  isSelected: boolean
-  // If the column originates as a default column based on column name, fields other than the facet type are readonly
-  // This field should not be automatically updated, because new columns with the same name should not immediately become readonly.
-  isOriginallyDefaultColumn: boolean
-  // jsonSubColumns will also include formData (like isSelected)
-  jsonSubColumns?: JsonSubColumnModelFormData[]
 }
 
 type TableColumnSchemaFormReducerAction =
@@ -231,11 +213,13 @@ function changeColumnModelType(
   ) {
     delete newColumnModelValue.maximumListLength
   }
-  if (
-    !canHaveRestrictedValues(newColumnType, !!jsonSubColumnModelIndex) &&
-    'enumValues' in newColumnModelValue
-  ) {
+
+  // Remove default and restricted values unconditionally since they may not adhere to the new column type
+  if ('enumValues' in newColumnModelValue) {
     delete newColumnModelValue.enumValues
+  }
+  if ('defaultValue' in newColumnModelValue) {
+    delete newColumnModelValue.defaultValue
   }
 
   const allowedFacetTypes = configureFacetsForType(

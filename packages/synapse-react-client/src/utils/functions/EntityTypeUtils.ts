@@ -19,6 +19,7 @@ import {
   MaterializedView,
   PROJECT_CONCRETE_TYPE_VALUE,
   ProjectHeader,
+  Reference,
   SUBMISSION_VIEW_CONCRETE_TYPE_VALUE,
   SubmissionView,
   Table,
@@ -306,6 +307,10 @@ export function getVersionDisplay(entity: Entity): string {
   }
 }
 
+export function normalizeSynPrefix(ref: Reference) {
+  return ref.targetId.startsWith('syn') ? ref.targetId : `syn${ref.targetId}`
+}
+
 // implemented by https://rest-docs.synapse.org/rest/org/sagebionetworks/repo/model/Entity.html
 const allEntityKeys: string[] = [
   'name',
@@ -374,7 +379,7 @@ export const entityJsonKeys: Record<ENTITY_CONCRETE_TYPE, string[]> = {
   [PROJECT_CONCRETE_TYPE_VALUE]: [...allEntityKeys, 'alias'],
 }
 
-type EntityTypeGroupKey = 'ALL_TABLES'
+type EntityTypeGroupKey = 'ALL_TABLES' | 'CONTAINER'
 
 export const EntityTypeGroup: Record<EntityTypeGroupKey, EntityType[]> = {
   ['ALL_TABLES']: [
@@ -386,4 +391,5 @@ export const EntityTypeGroup: Record<EntityTypeGroupKey, EntityType[]> = {
     EntityType.MATERIALIZED_VIEW,
     EntityType.VIRTUAL_TABLE,
   ],
+  ['CONTAINER']: [EntityType.PROJECT, EntityType.FOLDER],
 }

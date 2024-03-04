@@ -1,14 +1,14 @@
 import React, { useMemo, useState } from 'react'
-import { PRODUCTION_ENDPOINT_CONFIG } from '../../utils/functions/getEndpoint'
-import useGetInfoFromIds, {
-  UseGetInfoFromIdsProps,
-} from '../../utils/hooks/useGetInfoFromIds'
 import {
   AccessRequirement,
-  EntityHeader,
+  ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
   ManagedACTAccessRequirement,
   Renewal,
   Request,
+  RestrictableObjectType,
+  SELF_SIGN_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  TERMS_OF_USE_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
 } from '@sage-bionetworks/synapse-types'
 import IconSvg from '../IconSvg/IconSvg'
 import StandaloneLoginForm from '../Authentication/StandaloneLoginForm'
@@ -20,11 +20,8 @@ import {
   Box,
   Button,
   Dialog,
+  DialogActions,
   DialogContent,
-  DialogTitle,
-  IconButton,
-  Link,
-  Stack,
   styled,
   Typography,
   TypographyProps,
@@ -40,28 +37,58 @@ import {
 } from '../../synapse-queries'
 import TwoFactorAuthEnabledRequirement from './RequirementItem/TwoFactorAuthEnabledRequirement'
 import { AccessRequirementListItem } from './AccessRequirementListItem'
-import { useSynapseContext } from '../../utils/context/SynapseContext'
+import { useSynapseContext } from '../../utils'
 import { useCanShowManagedACTWikiInWizard } from './AccessRequirementListUtils'
-import { DialogActions } from '@mui/material'
+import { noop } from 'lodash-es'
+import { DialogBaseTitle } from '../DialogBase'
+import UserOrTeamBadge from '../UserOrTeamBadge'
+import { EntityLink } from '../EntityLink'
 
 export type AccessRequirementListProps = {
-  entityId: string // will show this entity info
-  teamId?: string // will show this team info
-  accessRequirementFromProps?: Array<AccessRequirement>
-  onHide: () => void
+  /* if provided, will show this instead of the entity information */
+  numberOfFilesAffected?: number
+  /* if provided, will show this instead of the entity information or numberOfFilesAffected */
+  requestObjectName?: string
+  /* If true, this component will render in its own modal */
   renderAsModal?: boolean
-  numberOfFilesAffected?: number // if provided, will show this instead of the entity information
-  requestObjectName?: string // if provided, will show this instead of the entity information or numberOfFilesAffected
-  dialogTitle?: string // if provided, will show this instead of Data Access Request
-}
+  /* Overrides the default dialog title. This only applies if renderAsModal is true */
+  dialogTitle?: string
+  /* Called when the user rejects the terms of a listed AccessRequirement. If renderAsModal is true, this is also called when the user closes the modal. */
+  onHide: () => void
+  /* Displays the provided list of access requirements, instead of the ones fetched using the subject ID */
+  accessRequirementFromProps?: Array<AccessRequirement>
+  /* If provided, displays these actions on when viewing all ARs */
+  customDialogActions?: React.ReactNode
+} & (
+  | {
+      /**
+       * Fetches the access requirements associated with an entity
+       * @deprecated Please use `subjectId` and `subjectType`
+       */
+      entityId: string
+    }
+  | {
+      /**
+       * Fetches the access requirements associated with a team
+       * @deprecated Please use `subjectId` and `subjectType`
+       */
+      teamId: string
+    }
+  | {
+      /* The ID of the object for which access is being requested */
+      subjectId: string
+      /* The type of the object for which access is being requested */
+      subjectType: RestrictableObjectType
+    }
+)
 
 const SUPPORTED_ACCESS_REQUIREMENTS = new Set<
   AccessRequirement['concreteType']
 >([
-  'org.sagebionetworks.repo.model.SelfSignAccessRequirement',
-  'org.sagebionetworks.repo.model.TermsOfUseAccessRequirement',
-  'org.sagebionetworks.repo.model.ManagedACTAccessRequirement',
-  'org.sagebionetworks.repo.model.ACTAccessRequirement',
+  SELF_SIGN_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  TERMS_OF_USE_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
 ])
 
 const DialogSubsectionHeader: StyledComponent<TypographyProps> = styled(
@@ -123,15 +150,31 @@ export default function AccessRequirementList(
   props: AccessRequirementListProps,
 ) {
   const {
-    entityId,
-    teamId,
-    onHide,
-    accessRequirementFromProps,
-    renderAsModal,
+    onHide = noop,
+    renderAsModal = false,
     numberOfFilesAffected,
     requestObjectName,
-    dialogTitle = 'Data Access Request',
+    customDialogActions,
   } = props
+
+  const isShowingRequirementsForEntity = 'entityId' in props
+  const isShowingRequirementsFromProps = 'accessRequirementFromProps' in props
+
+  const subjectId =
+    'subjectId' in props
+      ? props.subjectId
+      : isShowingRequirementsForEntity
+      ? props.entityId
+      : props.teamId
+
+  const subjectType =
+    'subjectType' in props
+      ? props.subjectType
+      : isShowingRequirementsForEntity
+      ? RestrictableObjectType.ENTITY
+      : RestrictableObjectType.TEAM
+
+  let { dialogTitle = 'Data Access Request' } = props
   const { accessToken } = useSynapseContext()
   const isSignedIn = !!accessToken
   const [requestDataStep, setRequestDataStep] = useState<RequestDataStep>(
@@ -144,30 +187,27 @@ export default function AccessRequirementList(
     Request | Renewal | undefined
   >()
 
-  const entityHeaderProps: UseGetInfoFromIdsProps<EntityHeader> = {
-    ids: [entityId],
-    type: 'ENTITY_HEADER',
-  }
   const canShowManagedACTWikiInWizard = useCanShowManagedACTWikiInWizard()
 
-  const entityInformation = useGetInfoFromIds<EntityHeader>(entityHeaderProps)
-
   const { data: fetchedRequirementsForTeam } = useGetAccessRequirementsForTeam(
-    teamId!,
+    subjectId,
     {
-      enabled: Boolean(!accessRequirementFromProps && teamId),
+      enabled: subjectType === RestrictableObjectType.TEAM,
     },
   )
   const { data: fetchedRequirementsForEntity } =
-    useGetAccessRequirementsForEntity(entityId, {
-      enabled: Boolean(!accessRequirementFromProps && entityId && !teamId),
+    useGetAccessRequirementsForEntity(subjectId, {
+      enabled: subjectType === RestrictableObjectType.ENTITY,
     })
 
-  const fetchedRequirements = teamId
-    ? fetchedRequirementsForTeam
-    : fetchedRequirementsForEntity
+  const requirementsFromProps = isShowingRequirementsFromProps
+    ? props.accessRequirementFromProps
+    : undefined
 
-  const accessRequirements = accessRequirementFromProps ?? fetchedRequirements
+  const accessRequirements =
+    requirementsFromProps ??
+    fetchedRequirementsForEntity ??
+    fetchedRequirementsForTeam
 
   /**
    * Set the initial ordering of the Access Requirements to show complete ARs first. The individual AR Item components
@@ -207,30 +247,30 @@ export default function AccessRequirementList(
   const anyARsRequireTwoFactorAuth = accessRequirements?.some(
     accessRequirement =>
       accessRequirement.concreteType ===
-        'org.sagebionetworks.repo.model.ManagedACTAccessRequirement' &&
+        MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE &&
       accessRequirement.isTwoFaRequired,
   )
 
   const anyARsRequireCertification = accessRequirements?.some(
     accessRequirement =>
       (accessRequirement.concreteType ===
-        'org.sagebionetworks.repo.model.ManagedACTAccessRequirement' ||
+        MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE ||
         accessRequirement.concreteType ===
-          'org.sagebionetworks.repo.model.SelfSignAccessRequirement') &&
+          SELF_SIGN_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE) &&
       accessRequirement.isCertifiedUserRequired,
   )
 
   const anyARsRequireProfileValidation = accessRequirements?.some(
     accessRequirement =>
       (accessRequirement.concreteType ===
-        'org.sagebionetworks.repo.model.ManagedACTAccessRequirement' ||
+        MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE ||
         accessRequirement.concreteType ===
-          'org.sagebionetworks.repo.model.SelfSignAccessRequirement') &&
+          SELF_SIGN_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE) &&
       accessRequirement.isValidatedProfileRequired,
   )
 
   const requestDetails = useMemo(() => {
-    // Prioritize requestObjectName, then the number of files affected, then the entity name
+    // Prioritize requestObjectName, then the number of files affected, then the entity/team name
     if (requestObjectName) return requestObjectName
     if (numberOfFilesAffected)
       return (
@@ -239,66 +279,17 @@ export default function AccessRequirementList(
           File(s)
         </>
       )
-    return (
-      <>
-        <IconSvg icon="file" sx={{ width: '30px' }} />{' '}
-        <Link
-          href={`${PRODUCTION_ENDPOINT_CONFIG.PORTAL}#!Synapse:${entityId}`}
-        >
-          {entityInformation[0]?.name}
-        </Link>
-      </>
-    )
-  }, [entityId, entityInformation, numberOfFilesAffected, requestObjectName])
-
-  const content = (
-    <>
-      <DialogTitle>
-        <Stack direction="row" alignItems={'center'} gap={'5px'}>
-          {dialogTitle}
-          <Box sx={{ flexGrow: 1 }} />
-          <IconButton onClick={onHide}>
-            <IconSvg icon={'close'} wrap={false} sx={{ color: 'grey.700' }} />
-          </IconButton>
-        </Stack>
-      </DialogTitle>
-
-      <DialogContent>
-        <DialogSubsectionHeader sx={{ mt: 0 }}>
-          What is this request for?
-        </DialogSubsectionHeader>
-        <Typography variant={'body1'} component={'span'}>
-          {requestDetails}
-        </Typography>
-        <DialogSubsectionHeader>What do I need to do?</DialogSubsectionHeader>
-        <AuthenticatedRequirement />
-        {anyARsRequireCertification && <CertificationRequirement />}
-        {anyARsRequireProfileValidation && <ValidationRequirement />}
-        {anyARsRequireTwoFactorAuth && <TwoFactorAuthEnabledRequirement />}
-        {sortedAccessRequirementIds
-          ?.map(id => accessRequirements!.find(ar => id === String(ar.id))!)
-          ?.map(accessRequirement => {
-            return (
-              <AccessRequirementListItem
-                key={accessRequirement.id}
-                accessRequirement={accessRequirement}
-                entityId={entityId}
-                onHide={onHide}
-                onRequestAccess={accessRequirement => {
-                  const nextStep = isSignedIn
-                    ? RequestDataStep.UPDATE_RESEARCH_PROJECT
-                    : RequestDataStep.PROMPT_LOGIN
-                  requestDataStepCallback({
-                    managedACTAccessRequirement: accessRequirement,
-                    step: nextStep,
-                  })
-                }}
-              />
-            )
-          })}
-      </DialogContent>
-    </>
-  )
+    if (subjectType === RestrictableObjectType.ENTITY) {
+      return <EntityLink entity={subjectId} />
+    } else if (subjectType === RestrictableObjectType.TEAM) {
+      return <UserOrTeamBadge principalId={subjectId} />
+    } else {
+      console.warn(
+        `Unhandled case for AccessRequirementList requestDetails: ${subjectType}: ${subjectId}`,
+      )
+      return <></>
+    }
+  }, [numberOfFilesAffected, requestObjectName, subjectId, subjectType])
 
   const dialogWidth =
     [
@@ -308,86 +299,131 @@ export default function AccessRequirementList(
       ? 'xl'
       : 'md'
 
-  let renderContent = content
-  if (renderAsModal) {
-    switch (requestDataStep) {
-      case RequestDataStep.UPDATE_RESEARCH_PROJECT:
-        renderContent = (
-          <ResearchProjectForm
-            managedACTAccessRequirement={managedACTAccessRequirement!}
-            onSave={researchProject => {
-              requestDataStepCallback({
-                managedACTAccessRequirement,
-                step: RequestDataStep.UPDATE_ACCESSORS_AND_FILES,
-                researchProjectId: researchProject.id,
-              })
-            }}
-            onHide={onHide}
-          />
-        )
-        break
-      case RequestDataStep.UPDATE_ACCESSORS_AND_FILES:
-        renderContent = (
-          <DataAccessRequestAccessorsFilesForm
-            researchProjectId={researchProjectId}
-            managedACTAccessRequirement={managedACTAccessRequirement!}
-            entityId={entityId} // for form submission after save
-            onHide={onHide}
-            onCancel={dataAccessRequestInProgress => {
-              requestDataStepCallback({
-                step: RequestDataStep.PROMPT_CANCEL,
-                dataAccessRequest: dataAccessRequestInProgress,
-              })
-            }}
-            onSubmissionCreated={() => {
-              requestDataStepCallback({ step: RequestDataStep.COMPLETE })
-            }}
-          />
-        )
-        break
-      case RequestDataStep.PROMPT_CANCEL:
-        renderContent = (
-          <CancelRequestDataAccess
-            modifiedDataAccessRequest={dataAccessRequest}
-            onHide={onHide} // for closing dialogs
-          />
-        )
-        break
-      case RequestDataStep.PROMPT_LOGIN:
-        renderContent = (
-          <>
-            <DialogTitle>Please Log In</DialogTitle>
-            <DialogContent className={'AccessRequirementList login-modal '}>
-              <StandaloneLoginForm
-                sessionCallback={() => {
-                  window.location.reload()
-                }}
-              />
-            </DialogContent>
-          </>
-        )
-        break
-      case RequestDataStep.COMPLETE:
-        renderContent = <RequestDataAccessSuccess onHide={onHide} />
-        break
-      case RequestDataStep.SHOW_ALL_ARS:
-      default:
-        renderContent = (
-          <>
-            {content}
-            <DialogActions>
+  let renderContent = <></>
+  switch (requestDataStep) {
+    case RequestDataStep.UPDATE_RESEARCH_PROJECT:
+      renderContent = (
+        <ResearchProjectForm
+          managedACTAccessRequirement={managedACTAccessRequirement!}
+          onSave={researchProject => {
+            requestDataStepCallback({
+              managedACTAccessRequirement,
+              step: RequestDataStep.UPDATE_ACCESSORS_AND_FILES,
+              researchProjectId: researchProject.id,
+            })
+          }}
+          onHide={onHide}
+        />
+      )
+      break
+    case RequestDataStep.UPDATE_ACCESSORS_AND_FILES:
+      renderContent = (
+        <DataAccessRequestAccessorsFilesForm
+          researchProjectId={researchProjectId}
+          managedACTAccessRequirement={managedACTAccessRequirement!}
+          subjectId={subjectId ?? ''}
+          subjectType={subjectType ?? RestrictableObjectType.ENTITY}
+          onHide={onHide}
+          onCancel={dataAccessRequestInProgress => {
+            requestDataStepCallback({
+              step: RequestDataStep.PROMPT_CANCEL,
+              dataAccessRequest: dataAccessRequestInProgress,
+            })
+          }}
+          onSubmissionCreated={() => {
+            requestDataStepCallback({ step: RequestDataStep.COMPLETE })
+          }}
+        />
+      )
+      break
+    case RequestDataStep.PROMPT_CANCEL:
+      renderContent = (
+        <CancelRequestDataAccess
+          modifiedDataAccessRequest={dataAccessRequest}
+          onHide={onHide} // for closing dialogs
+        />
+      )
+      break
+    case RequestDataStep.PROMPT_LOGIN:
+      dialogTitle = 'Please Log In'
+      renderContent = (
+        <>
+          <DialogBaseTitle title={dialogTitle} onCancel={onHide} />
+          <DialogContent className={'AccessRequirementList login-modal '}>
+            <StandaloneLoginForm
+              sessionCallback={() => {
+                window.location.reload()
+              }}
+            />
+          </DialogContent>
+        </>
+      )
+      break
+    case RequestDataStep.COMPLETE:
+      renderContent = <RequestDataAccessSuccess onHide={onHide} />
+      break
+    case RequestDataStep.SHOW_ALL_ARS:
+    default:
+      renderContent = (
+        <>
+          <DialogBaseTitle title={dialogTitle} onCancel={onHide} />
+          <DialogContent>
+            <DialogSubsectionHeader sx={{ mt: 0 }}>
+              What is this request for?
+            </DialogSubsectionHeader>
+            <Typography variant={'body1'} component={'span'}>
+              {requestDetails}
+            </Typography>
+            <DialogSubsectionHeader>
+              What do I need to do?
+            </DialogSubsectionHeader>
+            <AuthenticatedRequirement />
+            {anyARsRequireCertification && <CertificationRequirement />}
+            {anyARsRequireProfileValidation && <ValidationRequirement />}
+            {anyARsRequireTwoFactorAuth && <TwoFactorAuthEnabledRequirement />}
+            {sortedAccessRequirementIds
+              ?.map(id => accessRequirements!.find(ar => id === String(ar.id))!)
+              ?.map(accessRequirement => {
+                return (
+                  <AccessRequirementListItem
+                    key={accessRequirement.id}
+                    accessRequirement={accessRequirement}
+                    subjectId={subjectId}
+                    subjectType={subjectType}
+                    onHide={onHide}
+                    onRequestAccess={accessRequirement => {
+                      const nextStep = isSignedIn
+                        ? RequestDataStep.UPDATE_RESEARCH_PROJECT
+                        : RequestDataStep.PROMPT_LOGIN
+                      requestDataStepCallback({
+                        managedACTAccessRequirement: accessRequirement,
+                        step: nextStep,
+                      })
+                    }}
+                  />
+                )
+              })}
+          </DialogContent>
+          <DialogActions>
+            {customDialogActions ? (
+              customDialogActions
+            ) : (
               <Button variant="contained" onClick={onHide}>
                 Close
               </Button>
-            </DialogActions>
-          </>
-        )
-    }
+            )}
+          </DialogActions>
+        </>
+      )
+  }
+
+  if (renderAsModal) {
     return (
       <Dialog maxWidth={dialogWidth} fullWidth open={true} onClose={onHide}>
         {renderContent}
       </Dialog>
     )
   }
+
   return <Box>{renderContent}</Box>
 }

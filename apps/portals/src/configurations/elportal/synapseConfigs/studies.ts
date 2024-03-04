@@ -7,6 +7,7 @@ import {
   dataSql,
   dataOnStudiesPageSql,
   defaultSearchConfiguration,
+  cavaticaConnectAccountURL,
 } from '../resources'
 import {
   ColumnMultiValueFunction,
@@ -148,8 +149,9 @@ export const studiesDetailsPageProps: DetailsPageProps = {
             visibleColumnCount: 10,
             name: 'Metadata Files',
             showExportToCavatica: true,
-            cavaticaHelpURL: '/Limited%20Data%20Commons',
+            cavaticaConnectAccountURL: cavaticaConnectAccountURL,
             isRowSelectionVisible: true,
+            isRowSelectionUIFloating: false,
             tableConfiguration: {
               showAccessColumn: true,
               showDownloadColumn: true,
@@ -157,7 +159,7 @@ export const studiesDetailsPageProps: DetailsPageProps = {
             availableFacets: ['metadataType', 'dataType', 'assay'],
             sql: dataOnStudiesPageSql,
             shouldDeepLink: false,
-            defaultShowFacetVisualization: false,
+            defaultShowPlots: false,
           },
           tableSqlKeys: ['study'],
           columnName: 'studyKey',
@@ -170,8 +172,9 @@ export const studiesDetailsPageProps: DetailsPageProps = {
             rgbIndex,
             visibleColumnCount: 10,
             showExportToCavatica: true,
-            cavaticaHelpURL: '/Limited%20Data%20Commons',
+            cavaticaConnectAccountURL: cavaticaConnectAccountURL,
             isRowSelectionVisible: true,
+            isRowSelectionUIFloating: false,
             tableConfiguration: {
               showAccessColumn: true,
               showDownloadColumn: true,

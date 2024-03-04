@@ -26,6 +26,7 @@ import {
   dropNullValues,
   getFriendlyPropertyName,
   getTransformErrors,
+  shouldLiveValidate,
 } from './AnnotationEditorUtils'
 import { BooleanWidget } from './widget/BooleanWidget'
 import { DateTimeWidget } from './widget/DateTimeWidget'
@@ -51,6 +52,7 @@ import ArrayFieldDescriptionTemplate from './template/ArrayFieldDescriptionTempl
 import BaseInputTemplate from './template/BaseInputTemplate'
 import RJSF from '@rjsf/core'
 import FieldErrorTemplate from './template/FieldErrorTemplate'
+import ErrorListTemplate from './template/ErrorListTemplate'
 
 export type SchemaDrivenAnnotationEditorProps = {
   /** The entity whose annotations should be edited with the form */
@@ -59,9 +61,9 @@ export type SchemaDrivenAnnotationEditorProps = {
   schemaId?: string
   /** May be used to directly provide a JSON Schema to use for the form */
   validationSchema?: JSONSchema7
-  /** Optionally supply a ref to the form to handle submission externally with `formRef.current.submit()`. If provided, the editor will not render its own submit UI. */
+  /** Optionally supply a ref to the form to handle submission externally with `formRef.current.submit()`. */
   formRef?: React.RefObject<RJSF>
-  /** Provide live input validation. This can cause major performance degradation. */
+  /** Provide live input validation. This can cause performance degradation. By default, liveValidate will be true if an entity with a schema and existing annotations is being edited */
   liveValidate?: boolean
   /** Invoked after a successful form submission */
   onSuccess?: () => void
@@ -69,6 +71,8 @@ export type SchemaDrivenAnnotationEditorProps = {
   onCancel?: () => void
   /** Passes new form data upon each change to the form */
   onChange?: (annotations: Record<string, unknown>) => void
+  /** If true, the editor will not render its own submit UI. */
+  hideActions?: boolean
 }
 
 /**
@@ -119,13 +123,14 @@ export function SchemaDrivenAnnotationEditor(
     entityId,
     schemaId,
     validationSchema: validationSchemaFromProps,
-    liveValidate = false,
+    liveValidate: liveValidateFromProps,
     onSuccess = () => {
       /* no-op */
     },
     onCancel,
     formRef: formRefFromParent,
     onChange,
+    hideActions = false,
   } = props
   const localRef = useRef<RJSF>(null)
   const ref = formRefFromParent ?? localRef
@@ -143,22 +148,26 @@ export function SchemaDrivenAnnotationEditor(
 
   const [showConfirmation, setShowConfirmation] = React.useState(false)
 
-  const { entityMetadata: entityJson, annotations } = useGetJson(
+  const { data } = useGetJson(
     entityId!,
+    undefined,
     // Derived annotations will be precomputed and displayed as placeholders in the form
     false,
     {
       // Metadata is being edited, so don't refetch
       staleTime: Infinity,
       enabled: !!entityId,
-      useErrorBoundary: true,
+      throwOnError: true,
     },
   )
+
+  const entityJson = data?.entityMetadata
+  const annotations = data?.annotations
 
   // Annotation fields fetched and modified via the form
   const [formData, setFormData] = React.useState<
     Record<string, unknown> | undefined
-  >(annotations)
+  >(undefined)
 
   /**
    * patternProperties lets us define how to treat additionalProperties in a JSON schema by property name.
@@ -186,21 +195,21 @@ export function SchemaDrivenAnnotationEditor(
     {
       enabled: !!entityId,
       refetchOnWindowFocus: false,
-      useErrorBoundary: true,
+      throwOnError: true,
     },
   )
 
   const { data: fetchedValidationSchema, isLoading: isLoadingSchema } =
     useGetSchema(schemaId ?? schema?.jsonSchemaVersionInfo.$id ?? '', {
       enabled: !!schemaId || !!schema,
-      useErrorBoundary: true,
+      throwOnError: true,
     })
 
   const validationSchema = validationSchemaFromProps || fetchedValidationSchema
 
   const isLoading = isLoadingBinding || isLoadingSchema
 
-  const mutation = useUpdateViaJson({
+  const { mutate, isPending: updateIsPending } = useUpdateViaJson({
     onSuccess: () => {
       onSuccess()
     },
@@ -211,11 +220,14 @@ export function SchemaDrivenAnnotationEditor(
   })
 
   function submitChangedEntity() {
-    mutation.mutate({
+    mutate({
       ...cleanFormData(formData, true),
       ...entityJson,
     } as EntityJson)
   }
+
+  const liveValidate =
+    liveValidateFromProps ?? shouldLiveValidate(annotations, validationSchema)
 
   return (
     <div className="JsonSchemaFormContainer">
@@ -258,144 +270,125 @@ export function SchemaDrivenAnnotationEditor(
               </Box>
             </Alert>
           )}
-          {formData != undefined && (
-            <Form
-              validator={validator}
-              className="JsonSchemaForm"
-              liveValidate={liveValidate}
-              noHtml5Validate={true}
-              experimental_defaultFormStateBehavior={{
-                emptyObjectFields: 'skipDefaults',
-              }}
-              fields={{
-                ObjectField: CustomObjectField,
-              }}
-              templates={{
-                ArrayFieldDescriptionTemplate: ArrayFieldDescriptionTemplate,
-                ArrayFieldItemTemplate: ArrayFieldItemTemplate,
-                ArrayFieldTemplate: ArrayFieldTemplate,
-                ArrayFieldTitleTemplate: ArrayFieldTitleTemplate,
-                BaseInputTemplate: BaseInputTemplate,
-                FieldErrorTemplate: FieldErrorTemplate,
-                FieldTemplate: FieldTemplate,
-                ObjectFieldTemplate: ObjectFieldTemplate,
-                WrapIfAdditionalTemplate: WrapIfAdditionalTemplate,
-                ButtonTemplates: ButtonTemplate,
-                DescriptionFieldTemplate: DescriptionFieldTemplate,
-                /* Errors are displayed by an Alert component below, so we don't show the builtin ErrorList */
-                ErrorListTemplate: () => null,
-              }}
-              ref={ref}
-              disabled={mutation.isLoading}
-              schema={
-                {
-                  ...(validationSchema ?? {}),
-                  patternProperties: {
-                    ...(validationSchema?.patternProperties ?? {}),
-                    ...patternPropertiesBannedKeys,
-                  },
-                  additionalProperties:
-                    validationSchema?.additionalProperties ?? true,
-                } as JSONSchema7
+          <Form
+            validator={validator}
+            className="JsonSchemaForm"
+            liveValidate={liveValidate}
+            noHtml5Validate={true}
+            experimental_defaultFormStateBehavior={{
+              emptyObjectFields: 'skipDefaults',
+            }}
+            fields={{
+              ObjectField: CustomObjectField,
+            }}
+            templates={{
+              ArrayFieldDescriptionTemplate: ArrayFieldDescriptionTemplate,
+              ArrayFieldItemTemplate: ArrayFieldItemTemplate,
+              ArrayFieldTemplate: ArrayFieldTemplate,
+              ArrayFieldTitleTemplate: ArrayFieldTitleTemplate,
+              BaseInputTemplate: BaseInputTemplate,
+              FieldErrorTemplate: FieldErrorTemplate,
+              FieldTemplate: FieldTemplate,
+              ObjectFieldTemplate: ObjectFieldTemplate,
+              WrapIfAdditionalTemplate: WrapIfAdditionalTemplate,
+              ButtonTemplates: ButtonTemplate,
+              DescriptionFieldTemplate: DescriptionFieldTemplate,
+              ErrorListTemplate: ErrorListTemplate,
+            }}
+            ref={ref}
+            disabled={updateIsPending}
+            schema={
+              {
+                ...(validationSchema ?? {}),
+                patternProperties: {
+                  ...(validationSchema?.patternProperties ?? {}),
+                  ...patternPropertiesBannedKeys,
+                },
+                additionalProperties:
+                  validationSchema?.additionalProperties ?? true,
+              } as JSONSchema7
+            }
+            uiSchema={{
+              'ui:options': {
+                copyable: true,
+                duplicateKeySuffixSeparator: '_',
+              },
+              additionalProperties: {
+                'ui:field': AdditionalPropertiesSchemaField,
+              },
+            }}
+            transformErrors={transformErrors}
+            formData={formData}
+            onChange={({ formData }) => {
+              if (onChange) {
+                onChange(formData)
               }
-              uiSchema={{
-                'ui:options': {
-                  copyable: true,
-                  duplicateKeySuffixSeparator: '_',
-                },
-                additionalProperties: {
-                  'ui:field': AdditionalPropertiesSchemaField,
-                },
-              }}
-              transformErrors={transformErrors}
-              formData={formData}
-              onChange={({ formData }) => {
-                if (onChange) {
-                  onChange(formData)
-                }
-                setFormData(formData)
-                setValidationError(undefined)
-              }}
-              onBlur={() => {
-                setFormData(
-                  // Clean the formData onBlur to remove null values that we will need to strip before submission
-                  // This will ensure that the user gets accurate validation information since the data will match what the backend will receive
-                  cleanFormData(
-                    formData,
-                    // Don't remove null values in arrays--the fields will disappear, which the user probably does not want
-                    false,
-                  ),
-                )
-              }}
-              onSubmit={({ formData, errors }, event) => {
-                event.preventDefault()
-                if (errors && errors.length > 0) {
-                  setValidationError(errors)
-                }
-                setShowSubmissionError(false)
-                setFormData(formData)
-                submitChangedEntity()
-              }}
-              onError={(errors: RJSFValidationError[]) => {
-                // invoked when submit is clicked and there are client-side validation errors
+              setFormData(formData)
+              setValidationError(undefined)
+            }}
+            onBlur={() => {
+              setFormData(
+                // Clean the formData onBlur to remove null values that we will need to strip before submission
+                // This will ensure that the user gets accurate validation information since the data will match what the backend will receive
+                cleanFormData(
+                  formData,
+                  // Don't remove null values in arrays--the fields will disappear, which the user probably does not want
+                  false,
+                ),
+              )
+            }}
+            onSubmit={({ formData, errors }, event) => {
+              event.preventDefault()
+              if (errors && errors.length > 0) {
                 setValidationError(errors)
-                if (validationError && entityId) {
-                  setShowConfirmation(true)
-                }
-              }}
-              widgets={{
-                TextWidget: TextWidget,
-                DateTimeWidget: DateTimeWidget,
-                SelectWidget: SelectWidget,
-                CheckboxWidget: BooleanWidget,
-              }}
-            >
-              {validationError && (
-                <Alert severity="error" sx={{ my: 2 }}>
-                  <b>Validation errors found:</b>
-                  <ul>
-                    {validationError.map(
-                      (e: RJSFValidationError, index: number) => {
-                        return (
-                          <li key={index}>
-                            <b>{`${getFriendlyPropertyName(e)}: `}</b>{' '}
-                            {`${e.message}`}
-                          </li>
-                        )
-                      },
-                    )}
-                  </ul>
-                </Alert>
-              )}
-
-              {submissionError && showSubmissionError && (
-                <Alert severity="error" sx={{ my: 2 }}>
-                  Annotations could not be updated: {submissionError.reason}
-                </Alert>
-              )}
-              {!formRefFromParent && (
-                <>
-                  <Divider sx={{ my: 2 }} />
-                  <Box
-                    display="flex"
-                    justifyContent="space-between"
-                    sx={{ gridRowStart: 5 }}
-                  >
-                    <ConfirmationButtons
-                      hasCancelButton={onCancel !== undefined}
-                      onCancel={() => {
-                        onCancel && onCancel()
-                      }}
-                      onConfirm={() => {
-                        ref.current!.formElement.current.requestSubmit()
-                      }}
-                      confirmButtonText={entityId ? 'Save' : 'Validate'}
-                    />
-                  </Box>
-                </>
-              )}
-            </Form>
-          )}
+              }
+              setShowSubmissionError(false)
+              setFormData(formData)
+              submitChangedEntity()
+            }}
+            onError={(errors: RJSFValidationError[]) => {
+              // invoked when submit is clicked and there are client-side validation errors
+              setValidationError(errors)
+              if ((validationError || liveValidate) && entityId) {
+                setShowConfirmation(true)
+              }
+            }}
+            widgets={{
+              TextWidget: TextWidget,
+              DateTimeWidget: DateTimeWidget,
+              SelectWidget: SelectWidget,
+              CheckboxWidget: BooleanWidget,
+            }}
+          >
+            {submissionError && showSubmissionError && (
+              <Alert severity="error" sx={{ my: 2 }}>
+                Annotations could not be updated: {submissionError.reason}
+              </Alert>
+            )}
+            {!hideActions && (
+              <>
+                <Divider sx={{ my: 2 }} />
+                <Box
+                  display="flex"
+                  justifyContent="space-between"
+                  sx={{ gridRowStart: 5 }}
+                >
+                  <ConfirmationButtons
+                    hasCancelButton={onCancel !== undefined}
+                    onCancel={() => {
+                      onCancel && onCancel()
+                    }}
+                    onConfirm={() => {
+                      ref.current!.formElement.current.requestSubmit()
+                    }}
+                    confirmButtonProps={{
+                      children: entityId ? 'Save' : 'Validate',
+                    }}
+                  />
+                </Box>
+              </>
+            )}
+          </Form>
           {showConfirmation && (
             <ConfirmationDialog
               open={true}
@@ -429,7 +422,9 @@ export function SchemaDrivenAnnotationEditor(
                   </div>
                 </>
               }
-              confirmButtonText="Save"
+              confirmButtonProps={{
+                children: 'Save',
+              }}
             />
           )}
         </>

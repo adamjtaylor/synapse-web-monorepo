@@ -6,7 +6,6 @@ import {
   ENTITY_VIEW_TYPE_MASK_DATASET,
   ENTITY_VIEW_TYPE_MASK_FILE,
   FacetType,
-  JsonSubColumnModel,
   ViewEntityType,
   ViewScope,
 } from '@sage-bionetworks/synapse-types'
@@ -14,7 +13,7 @@ import { SetOptional } from 'type-fest'
 import {
   ColumnModelFormData,
   JsonSubColumnModelFormData,
-} from './TableColumnSchemaFormReducer'
+} from './Validators/ColumnModelValidator'
 import {
   convertToEntityType,
   isDataset,
@@ -22,6 +21,7 @@ import {
   isEntityView,
   isSubmissionView,
 } from '../../utils/functions/EntityTypeUtils'
+import { JSONSchema7Definition } from 'json-schema'
 
 /**
  * These column types can only be used in Tables. They can not be used in views.
@@ -201,25 +201,32 @@ export function canHaveDefault(
   isJsonSubColumnFacet: boolean,
 ) {
   // SWC-6333: default types are not allowed in views
-  if (!isView && !isJsonSubColumnFacet) {
+  if (isView) {
+    return false
+  } else if (isJsonSubColumnFacet) {
+    return false
+  } else {
     switch (type) {
       case ColumnTypeEnum.ENTITYID:
+      case ColumnTypeEnum.ENTITYID_LIST:
       case ColumnTypeEnum.FILEHANDLEID:
       case ColumnTypeEnum.USERID:
+      case ColumnTypeEnum.USERID_LIST:
       case ColumnTypeEnum.MEDIUMTEXT:
       case ColumnTypeEnum.LARGETEXT:
       case ColumnTypeEnum.JSON:
+      case ColumnTypeEnum.SUBMISSIONID:
+      case ColumnTypeEnum.EVALUATIONID:
         return false
       default:
         return true
     }
-  } else {
-    return false
   }
 }
 
-const DEFAULT_STRING_SIZE = 50
-const MAX_STRING_SIZE = 1000
+export const DEFAULT_STRING_SIZE = 50
+export const MAX_STRING_SIZE = 1000
+export const MAX_LIST_LENGTH = 100
 
 /**
  * Get the default max size for a given type.
@@ -231,7 +238,6 @@ export function getMaxSizeForType(type: ColumnType | ColumnTypeEnum): number {
   switch (type) {
     case ColumnTypeEnum.STRING:
     case ColumnTypeEnum.STRING_LIST:
-      return DEFAULT_STRING_SIZE
     case ColumnTypeEnum.LINK:
       return MAX_STRING_SIZE
     default:
@@ -257,36 +263,17 @@ export function canHaveRestrictedValues(
   }
 }
 
-/**
- * Transform the form data for the TableColumnSchemaForm to ColumnModels to be sent to Synapse
- * @param formData the form data to transform
- */
-export function transformFormDataToColumnModels(
-  formData: ColumnModelFormData[],
-): SetOptional<ColumnModel, 'id'>[] {
-  return formData.map(
-    (formEntry: ColumnModelFormData): SetOptional<ColumnModel, 'id'> => {
-      // Remove the isSelected field because it was only used for the UI.
-      const { isSelected, ...rest } = formEntry
-      const columnModel = rest as SetOptional<ColumnModel, 'id'>
-      if (columnModel.jsonSubColumns) {
-        columnModel.jsonSubColumns = (
-          columnModel.jsonSubColumns as JsonSubColumnModelFormData[]
-        ).map(
-          (
-            jsonSubColumnFormData: JsonSubColumnModelFormData,
-          ): JsonSubColumnModel => {
-            // isSelected field from the subcolumn for the same reason
-            const { isSelected, ...rest } = jsonSubColumnFormData
-            return {
-              ...rest,
-            }
-          },
-        )
-      }
-      return columnModel
-    },
-  )
+function transformEnumValues(
+  enumValues: string[],
+  columnType: ColumnType | ColumnTypeEnum,
+): (string | number)[] {
+  // SWC-6622 - Special case: if these are INTEGER, convert to numbers before inserting data into form components
+  // The editor validates that these are integers, so inserting the strings returned by the API causes an
+  // unexpected validation error
+  if (columnType === ColumnTypeEnum.INTEGER) {
+    return enumValues.map(value => parseInt(value))
+  }
+  return enumValues
 }
 
 /**
@@ -302,17 +289,36 @@ export function transformColumnModelsToFormData(
   return columnModels.map((cm): ColumnModelFormData => {
     return {
       ...cm,
+      columnType: cm.columnType as ColumnTypeEnum,
+      maximumSize:
+        cm.maximumSize == null ? undefined : cm.maximumSize.toString(),
+      maximumListLength:
+        cm.maximumListLength == null
+          ? undefined
+          : cm.maximumListLength.toString(),
       isSelected: false,
       // If the name matches a known default column model, then we consider it to be a default column model itself
       isOriginallyDefaultColumn: defaultColumns.some(
         dcm => dcm.name === cm.name,
       ),
       jsonSubColumns: cm.jsonSubColumns
-        ? cm.jsonSubColumns.map(jsc => ({
-            ...jsc,
-            isSelected: false,
-          }))
+        ? cm.jsonSubColumns.map(
+            (jsc): JsonSubColumnModelFormData => ({
+              ...jsc,
+              columnType: jsc.columnType as ColumnTypeEnum,
+              isSelected: false,
+            }),
+          )
         : undefined,
+      // If this is defaultValue for a LIST column, the value is a serialized string
+      defaultValue:
+        cm.defaultValue && cm.columnType.endsWith('_LIST')
+          ? JSON.parse(cm.defaultValue)
+          : cm.defaultValue,
+      enumValues:
+        cm.enumValues != null
+          ? transformEnumValues(cm.enumValues, cm.columnType)
+          : undefined,
     }
   })
 }
@@ -349,4 +355,38 @@ export function getViewScopeForEntity(entity: Entity): ViewScope | undefined {
     }
   }
   return undefined
+}
+
+export function getJsonSchemaItemDefinitionForColumnType(
+  columnType: ColumnTypeEnum,
+): JSONSchema7Definition {
+  switch (columnType) {
+    case ColumnTypeEnum.STRING:
+    case ColumnTypeEnum.STRING_LIST:
+      return { type: 'string', minLength: 1 }
+    case ColumnTypeEnum.DOUBLE:
+      return { type: 'number' }
+    case ColumnTypeEnum.BOOLEAN:
+    case ColumnTypeEnum.BOOLEAN_LIST:
+      return { type: 'boolean' }
+    case ColumnTypeEnum.INTEGER:
+    case ColumnTypeEnum.INTEGER_LIST:
+      return { type: 'integer' }
+    case ColumnTypeEnum.DATE:
+    case ColumnTypeEnum.DATE_LIST:
+      return { type: 'string', format: 'datetime' }
+    case ColumnTypeEnum.FILEHANDLEID:
+    case ColumnTypeEnum.ENTITYID:
+    case ColumnTypeEnum.ENTITYID_LIST:
+    case ColumnTypeEnum.LINK:
+    case ColumnTypeEnum.MEDIUMTEXT:
+    case ColumnTypeEnum.LARGETEXT:
+    case ColumnTypeEnum.USERID:
+    case ColumnTypeEnum.USERID_LIST:
+    case ColumnTypeEnum.SUBMISSIONID:
+    case ColumnTypeEnum.JSON:
+    case ColumnTypeEnum.EVALUATIONID:
+    default:
+      return { type: 'string', minLength: 1 }
+  }
 }

@@ -36,6 +36,7 @@ module.exports = {
         additionalHooks: "useDebouncedEffect",
       },
     ],
+    "react/no-object-type-as-default-prop": "error",
     "no-extra-semi": "off",
     "prefer-const": "warn",
     "jest/expect-expect": "off",
@@ -60,6 +61,14 @@ module.exports = {
     "@typescript-eslint/no-empty-function": "off",
     "@typescript-eslint/no-extra-semi": "warn",
   },
+  overrides: [
+    {
+      files: ["apps/portals/e2e/*.ts"],
+      rules: {
+        "@typescript-eslint/no-floating-promises": "error",
+      },
+    },
+  ],
   settings: {
     react: {
       version: "detect",

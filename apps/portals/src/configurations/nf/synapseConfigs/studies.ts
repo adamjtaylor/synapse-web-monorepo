@@ -10,6 +10,7 @@ import type { CardConfiguration } from 'synapse-react-client'
 import { DetailsPageProps } from 'types/portal-util-types'
 import { toolsCardConfiguration } from './tools'
 import { publicationsCardConfiguration } from './publications'
+import { datasetCardConfiguration } from './datasets'
 import {
   studiesSql,
   datasetsSql,
@@ -19,6 +20,7 @@ import {
   toolStudySql,
 } from '../resources'
 import { ColumnSingleValueFilterOperator } from '@sage-bionetworks/synapse-types'
+import { NoContentPlaceholderType } from 'synapse-react-client'
 
 export const newStudiesSql = `${studiesSql} order by ROW_ID desc limit 3`
 const type = SynapseConstants.GENERIC_CARD
@@ -166,7 +168,7 @@ export const studiesDetailPage: DetailsPageProps = {
           tableSqlKeys: ['studyId'],
           props: {
             sql: toolStudySql,
-            limit: 3,
+            initialLimit: 3,
             ...toolsCardConfiguration,
           },
         },
@@ -186,23 +188,45 @@ export const studiesDetailPage: DetailsPageProps = {
           columnName: 'relatedStudies',
           tableSqlKeys: ['studyId'],
           props: {
-            sqlOperator: ColumnSingleValueFilterOperator.LIKE,
+            sqlOperator: ColumnSingleValueFilterOperator.EQUAL,
             sql: studiesSql,
             columnAliases,
+            noContentPlaceholderType: NoContentPlaceholderType.HIDDEN,
             ...studyCardConfiguration,
           },
         },
       ],
     },
     {
-      title: 'Study Data',
-      uriValue: 'Data',
+      title: 'Study Datasets',
+      uriValue: 'Datasets',
+      iconName: 'dataset',
+      toolTip: 'All of the Datasets generated within this study',
+      cssClass: 'tab-dataset',
+      synapseConfigArray: [
+        {
+          name: 'CardContainerLogic',
+          columnName: 'studyId',
+          title: 'Study Datasets',
+          tableSqlKeys: ['studyId'],
+          props: {
+            ...datasetCardConfiguration,
+            sql: datasetsSql,
+            sqlOperator: ColumnSingleValueFilterOperator.EQUAL,
+          },
+        },
+      ],
+    },
+    {
+      title: 'Study Files',
+      uriValue: 'Files',
       iconName: 'database',
-      toolTip: 'All of the Data generated within this study',
+      toolTip: 'All of the file data generated within this study',
       cssClass: 'tab-database',
       synapseConfigArray: [
         {
           name: 'QueryWrapperPlotNav',
+          title: 'Study Files',
           props: {
             rgbIndex: 8,
             shouldDeepLink: false,
@@ -213,26 +237,13 @@ export const studiesDetailPage: DetailsPageProps = {
               showAccessColumn: true,
               showDownloadColumn: true,
             },
-            name: 'Data Files',
+            // name: 'Study Files',
             columnAliases,
             searchConfiguration,
           },
           tableSqlKeys: ['studyId'],
           columnName: 'studyId',
         },
-
-        {
-          name: 'CardContainerLogic',
-          columnName: 'studyId',
-          title: 'Datasets',
-          tableSqlKeys: ['studyId'],
-          props: {
-            sql: datasetsSql,
-            sqlOperator: ColumnSingleValueFilterOperator.EQUAL,
-            type: 'dataset',
-          },
-        },
-
         {
           name: 'StandaloneQueryWrapper',
           title: 'Metadata Files',

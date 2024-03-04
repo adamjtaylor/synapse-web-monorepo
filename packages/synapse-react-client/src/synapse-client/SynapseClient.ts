@@ -37,9 +37,9 @@ import {
   ENTITY_PERMISSIONS,
   ENTITY_SCHEMA_BINDING,
   ENTITY_SCHEMA_VALIDATION,
+  ENTITY_VERSION_JSON,
   EVALUATION,
   EVALUATION_BY_ID,
-  EVALUATIONS_BY_ID,
   FAVORITES,
   FILE_HANDLE_BATCH,
   FORUM,
@@ -129,9 +129,14 @@ import {
   ChangePasswordWithCurrentPassword,
   ChangePasswordWithToken,
   ColumnModel,
+  CreateAccessApprovalRequest,
+  CreateChallengeTeamRequest,
   CreateDiscussionReply,
   CreateDiscussionThread,
+  CreateMembershipInvitationRequest,
+  CreateMembershipRequestRequest,
   CreateSubmissionRequest,
+  CreateTeamRequest,
   Direction,
   DiscussionFilter,
   DiscussionReplyBundle,
@@ -870,15 +875,40 @@ export const getGroupHeadersBatch = (
  * Return a batch of Evaluation queues
  * https://rest-docs.synapse.org/rest/GET/evaluation.html
  */
-export const getEvaluations = (
-  evalIds: string[],
-  accessToken: string | undefined,
+export const getEvaluations = async (
+  params: GetEvaluationParameters = {},
+  accessToken?: string,
 ): Promise<PaginatedResults<Evaluation>> => {
-  return doGet<PaginatedResults<Evaluation>>(
-    EVALUATIONS_BY_ID(evalIds),
-    accessToken,
-    BackendDestinationEnum.REPO_ENDPOINT,
-  )
+  const urlParams = new URLSearchParams()
+  if (params.accessType != null) urlParams.set('accessType', params.accessType)
+  if (params.activeOnly != null)
+    urlParams.set('activeOnly', params.activeOnly.toString())
+  if (params.evaluationIds != null)
+    urlParams.set('evaluationIds', params.evaluationIds.join(','))
+
+  const fn = (limit: number, offset: number) => {
+    urlParams.set('limit', limit.toString())
+    urlParams.set('offset', offset.toString())
+
+    const url = `${EVALUATION}?${urlParams.toString()}`
+    return doGet<PaginatedResults<Evaluation>>(
+      url,
+      accessToken,
+      BackendDestinationEnum.REPO_ENDPOINT,
+    )
+  }
+
+  // If evaluation IDs were explicitly specified, fetch all pages
+  if (params.evaluationIds) {
+    const results = await getAllOfPaginatedService(fn)
+    return {
+      totalNumberOfResults: results.length,
+      results,
+    }
+  }
+
+  // Otherwise, return the requested page of data
+  return fn(params.limit ?? 20, params.offset ?? 0)
 }
 
 export type UserProfileList = { list: UserProfile[] }
@@ -1035,10 +1065,12 @@ export const getEntityHeaders = (
  * https://rest-docs.synapse.org/rest/GET/entity/alias/alias.html
  */
 export const getEntityAlias = (alias: string, accessToken?: string) => {
-  return doGet<EntityId>(
-    ENTITY_ALIAS(alias),
-    accessToken,
-    BackendDestinationEnum.REPO_ENDPOINT,
+  return allowNotFoundError(() =>
+    doGet<EntityId>(
+      ENTITY_ALIAS(alias),
+      accessToken,
+      BackendDestinationEnum.REPO_ENDPOINT,
+    ),
   )
 }
 
@@ -1211,6 +1243,18 @@ export const getUserChallenges = (
 }
 
 /**
+ * Get a user's certification quiz passing record
+ * see https://rest-docs.synapse.org/rest/GET/user/id/certifiedUserPassingRecord.html
+ */
+export const getPassingRecord = (
+  userId: string | number,
+  accessToken: string | undefined,
+): Promise<PassingRecord> => {
+  const url = `/repo/v1//user/${userId}/certifiedUserPassingRecord`
+  return doGet(url, accessToken, BackendDestinationEnum.REPO_ENDPOINT)
+}
+
+/**
  * Get a list of teams registered to the given challenge.
  * see http://rest-docs.synapse.org/rest/GET/challenge.html
  */
@@ -1277,19 +1321,15 @@ export const getSubmissionEligibility = (
  * see https://rest-docs.synapse.org/rest/POST/challenge/challengeId/challengeTeam.html
  */
 export const registerChallengeTeam = (
+  challengeTeam: CreateChallengeTeamRequest,
   accessToken: string | undefined,
-  challengeId: string | number,
-  teamId: string | number,
-  message?: string,
 ): Promise<ChallengeTeam> => {
-  const url = `/repo/v1/challenge/${challengeId}/challengeTeam`
+  const url = `/repo/v1/challenge/${String(
+    challengeTeam.challengeId,
+  )}/challengeTeam`
   return doPost(
     url,
-    {
-      challengeId,
-      teamId,
-      message,
-    },
+    challengeTeam,
     accessToken,
     BackendDestinationEnum.REPO_ENDPOINT,
   )
@@ -1312,14 +1352,12 @@ export const getEntityChallenge = (
  * https://rest-docs.synapse.org/rest/POST/team.html
  */
 export function createTeam(
+  team: CreateTeamRequest,
   accessToken: string | undefined,
-  name: string,
-  description?: string,
-  icon?: string,
 ): Promise<Team> {
   return doPost(
     `/repo/v1/team`,
-    { name, description, icon },
+    team,
     accessToken,
     BackendDestinationEnum.REPO_ENDPOINT,
   )
@@ -1410,7 +1448,7 @@ export const addTeamMemberAsAuthenticatedUserOrAdmin = (
   memberId: string,
   accessToken: string,
 ) => {
-  return doPut(
+  return doPut<void>(
     TEAM_ID_MEMBER_ID_WITH_NOTIFICATION(teamId, memberId),
     undefined,
     accessToken,
@@ -1419,20 +1457,43 @@ export const addTeamMemberAsAuthenticatedUserOrAdmin = (
 }
 
 /**
+ * Retrieve the open membership invitations for a user
+ * https://rest-docs.synapse.org/rest/GET/user/id/openInvitation.html
+ */
+export function getOpenMembershipInvitationsForUser(
+  userId: string,
+  accessToken: string,
+): Promise<PaginatedResults<MembershipInvitation>> {
+  return doGet(
+    `${REPO}/user/${userId}/openInvitation`,
+    accessToken,
+    BackendDestinationEnum.REPO_ENDPOINT,
+  )
+}
+
+/**
+ * Retrieve all open membership invitations for a user.
+ */
+export function getAllOpenMembershipInvitationsForUser(
+  userId: string,
+  accessToken: string,
+) {
+  return getAllOfPaginatedService(() =>
+    getOpenMembershipInvitationsForUser(userId, accessToken),
+  )
+}
+
+/**
  * Create a membership invitation and send an email notification to the invitee.
  * https://rest-docs.synapse.org/rest/POST/membershipInvitation.html
  */
 export function createMembershipInvitation(
+  membershipInvitation: CreateMembershipInvitationRequest,
   accessToken: string | undefined,
-  teamId: string | number,
-  inviteeEmail: string,
-  inviteeId?: string | number,
-  message?: string,
-  expiresOn?: string,
-): Promise<EntityHeader> {
+): Promise<MembershipInvitation> {
   return doPost(
     `${REPO}/membershipInvitation`,
-    { teamId, inviteeEmail, inviteeId, message, expiresOn },
+    membershipInvitation,
     accessToken,
     BackendDestinationEnum.REPO_ENDPOINT,
   )
@@ -1508,21 +1569,18 @@ export const getMembershipStatus = (
 }
 
 /**
- * Create a membership request and send an email notification to the administrators of the team.
+ * Create a membership request and send an email notification to the administrators of the team. The Team must be specified. Optionally, the creator may include a message and/or expiration date for the request. If no expiration date is specified then the request never expires.
  *
- * @returns a TeamMember if the user is a member of the team, or null if the user is not.
+ * https://rest-docs.synapse.org/rest/POST/membershipRequest.html
  */
 export const createMembershipRequest = (
-  teamId: string,
-  userId: string,
-  message?: string,
-  expiresOn?: string,
+  membershipRequest: CreateMembershipRequestRequest,
   accessToken?: string,
-): Promise<MembershipRequest | null> => {
+): Promise<MembershipRequest> => {
   const url = `/repo/v1/membershipRequest`
   return doPost<MembershipRequest>(
     url,
-    { teamId, userId, message, expiresOn },
+    membershipRequest,
     accessToken,
     BackendDestinationEnum.REPO_ENDPOINT,
   )
@@ -2991,7 +3049,7 @@ export const getAccessApproval = async (
  */
 export const createAccessApproval = async (
   accessToken: string | undefined,
-  accessApproval: AccessApproval,
+  accessApproval: CreateAccessApprovalRequest,
 ): Promise<AccessApproval> => {
   return doPost<AccessApproval>(
     ACCESS_APPROVAL,
@@ -3594,19 +3652,24 @@ export const hasAccessToEntity = (
  * Get the entity and its annotations as a JSON object
  * https://rest-docs.synapse.org/rest/GET/entity/id/json.html
  * @param entityId
+ * @param versionNumber
  * @param includeDerivedAnnotations
  * @param accessToken
  * @returns
  */
 export const getEntityJson = (
   entityId: string,
+  versionNumber: number | undefined,
   includeDerivedAnnotations: boolean,
   accessToken?: string,
 ) => {
   const params = new URLSearchParams()
   params.set('includeDerivedAnnotations', String(includeDerivedAnnotations))
+  const path = versionNumber
+    ? ENTITY_VERSION_JSON(entityId, versionNumber)
+    : ENTITY_JSON(entityId)
   return doGet<EntityJson>(
-    `${ENTITY_JSON(entityId)}?${params.toString()}`,
+    `${path}?${params.toString()}`,
     accessToken,
     BackendDestinationEnum.REPO_ENDPOINT,
   )
@@ -4260,7 +4323,7 @@ export const forumSearch = (
  * https://rest-docs.synapse.org/rest/GET/forum/forumId/threads.html
  */
 
-export const getForumThread = (
+export const getForumThreads = (
   accessToken: string | undefined,
   forumId: string,
   offset: number = 0,
@@ -4271,7 +4334,7 @@ export const getForumThread = (
 ) => {
   const params = new URLSearchParams()
   params.set('offset', offset.toString())
-  params.set('limit', limit?.toString())
+  params.set('limit', limit.toString())
   params.set('sort', sort)
   params.set('ascending', ascending.toString())
   params.set('filter', filter)
@@ -4600,6 +4663,24 @@ export function getDefaultUploadDestination(
 ): Promise<UploadDestination> {
   return doGet<UploadDestination>(
     `/file/v1/entity/${containerEntityId}/uploadDestination`,
+    accessToken,
+    BackendDestinationEnum.REPO_ENDPOINT,
+  )
+}
+
+/**
+ * Get the upload destination associated with the given storage location id.
+ * This will always return an upload destination
+ *
+ * https://rest-docs.synapse.org/rest/GET/entity/id/uploadDestination/storageLocationId.html
+ */
+export function getUploadDestinationForStorageLocation(
+  parentId: string,
+  storageLocationId: number,
+  accessToken?: string,
+): Promise<UploadDestination> {
+  return doGet<UploadDestination>(
+    `/file/v1/entity/${parentId}/uploadDestination/${storageLocationId}`,
     accessToken,
     BackendDestinationEnum.REPO_ENDPOINT,
   )

@@ -31,19 +31,19 @@ export function TableQueryDownloadConfirmation() {
     requestCopy.partMask =
       SynapseConstants.BUNDLE_MASK_QUERY_COUNT |
       SynapseConstants.BUNDLE_MASK_SUM_FILES_SIZE_BYTES
-
     const fileColumnId = getFileColumnModelId(data?.columnModels)
     if (fileColumnId) {
       requestCopy.query.selectFileColumn = Number(fileColumnId)
     }
-    if (hasSelectedRows && rowSelectionPrimaryKey && data?.columnModels) {
+    if (hasSelectedRows && rowSelectionPrimaryKey && data?.selectColumns) {
+      const primaryKeyINFilter = getPrimaryKeyINFilter(
+        rowSelectionPrimaryKey,
+        selectedRows,
+        data.selectColumns,
+      )
       requestCopy.query.additionalFilters = [
         ...(requestCopy.query.additionalFilters || []),
-        getPrimaryKeyINFilter(
-          rowSelectionPrimaryKey,
-          selectedRows,
-          data.columnModels,
-        ),
+        primaryKeyINFilter,
       ]
     }
     return requestCopy
@@ -60,7 +60,7 @@ export function TableQueryDownloadConfirmation() {
     setShowDownloadConfirmation(false)
   }
 
-  const { mutate: addToDownloadList, isLoading: isAddingToDownloadCart } =
+  const { mutate: addToDownloadList, isPending: isAddingToDownloadCart } =
     useAddQueryToDownloadList({
       onSuccess: () => {
         displayFilesWereAddedToDownloadListSuccess(downloadCartPageUrl)
@@ -81,6 +81,9 @@ export function TableQueryDownloadConfirmation() {
     ? undefined
     : queryResultResponse?.responseBody?.sumFileSizes?.sumFileSizesBytes
 
+  // PORTALS-2954: We can only rely on the row version number if the rowID is meaningful.
+  // If rowSelectionPrimaryKey is undefined, then try to use the row version number
+  const useVersionNumber = rowSelectionPrimaryKey == undefined
   return (
     <DownloadConfirmationUI
       onAddToDownloadCart={() =>
@@ -88,6 +91,7 @@ export function TableQueryDownloadConfirmation() {
           query: queryBundleRequest?.query,
           concreteType:
             'org.sagebionetworks.repo.model.download.AddToDownloadListRequest',
+          useVersionNumber: useVersionNumber,
         })
       }
       fileCount={fileCount}

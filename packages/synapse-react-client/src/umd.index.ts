@@ -1,5 +1,5 @@
 import { SkeletonButton } from './components/Skeleton/SkeletonButton'
-import { AccountLevelBadge } from './components/AccountLevelBadge/AccountLevelBadge'
+import { AccountLevelBadges } from './components/AccountLevelBadges/AccountLevelBadges'
 import ChangePassword from './components/ChangePassword/ChangePassword'
 import { ReviewerDashboard } from './components/dataaccess/ReviewerDashboard'
 import { FolderDownloadConfirmation } from './components/download_list/FolderDownloadConfirmation'
@@ -69,6 +69,14 @@ import SubscriptionPage from './components/SubscriptionPage'
 import OrientationBanner from './components/OrientationBanner/OrientationBanner'
 import AccessRequirementList from './components/AccessRequirementList/AccessRequirementList'
 import { BackendDestinationEnum } from './utils/functions'
+import TableColumnSchemaForm from './components/TableColumnSchemaEditor/TableColumnSchemaForm'
+import EntityHeaderTable from './components/EntityHeaderTable'
+import AccessRequirementRelatedProjectsList from './components/AccessRequirementRelatedProjectsList'
+import CreateTableViewWizard from './components/CreateTableViewWizard/CreateTableViewWizard'
+import TableColumnSchemaEditor from './components/TableColumnSchemaEditor/TableColumnSchemaEditor'
+import SqlDefinedTableEditorModal from './components/SqlDefinedTableEditor/SqlDefinedTableEditorModal'
+import EntityViewScopeEditorModal from './components/EntityViewScopeEditor/EntityViewScopeEditorModal'
+import AvailableEvaluationQueueList from './components/ChallengeSubmission/AvailableEvaluationQueueList'
 
 // Also include scss in the bundle
 import './style/main.scss'
@@ -94,7 +102,7 @@ const SynapseComponents = {
   EvaluationCard,
   EvaluationEditorPage,
   AccessTokenPage,
-  AccountLevelBadge,
+  AccountLevelBadges,
   TermsAndConditions,
   PageProgress,
   ProjectViewCarousel,
@@ -142,7 +150,15 @@ const SynapseComponents = {
   TwoFactorEnrollmentForm,
   SubscriptionPage,
   OrientationBanner,
+  AvailableEvaluationQueueList,
   AccessRequirementList,
+  TableColumnSchemaForm,
+  EntityHeaderTable,
+  AccessRequirementRelatedProjectsList,
+  CreateTableViewWizard,
+  TableColumnSchemaEditor,
+  SqlDefinedTableEditorModal,
+  EntityViewScopeEditorModal,
 }
 
 // Include the version in the build

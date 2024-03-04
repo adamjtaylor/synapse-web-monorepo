@@ -12,6 +12,7 @@ import {
   FavoriteSortDirection,
   FileHandle,
   FileHandleAssociation,
+  GetEvaluationParameters,
   GetProjectsParameters,
   PrincipalAliasRequest,
   QueryBundleRequest,
@@ -26,25 +27,35 @@ import {
   ViewColumnModelRequest,
   ViewEntityType,
 } from '@sage-bionetworks/synapse-types'
-import { QueryKey } from 'react-query'
+import { QueryKey } from '@tanstack/react-query'
 import { removeTrailingUndefinedElements } from '../utils/functions/ArrayUtils'
 import { hashCode } from '../utils/functions/StringUtils'
+import {
+  USER_BUNDLE_MASK_IS_ACT_MEMBER,
+  USER_BUNDLE_MASK_IS_AR_REVIEWER,
+  USER_BUNDLE_MASK_IS_CERTIFIED,
+  USER_BUNDLE_MASK_IS_VERIFIED,
+  USER_BUNDLE_MASK_ORCID,
+  USER_BUNDLE_MASK_USER_PROFILE,
+  USER_BUNDLE_MASK_VERIFICATION_SUBMISSION,
+} from '../utils/SynapseConstants'
 
 const entityQueryKeyObjects = {
   /* Query key for all entities */
   all: { objectType: 'entity' },
   // Data for an entity
-  entity: (id: string) => ({ ...entityQueryKeyObjects.all, id: id }),
-  // Data for a particular version of an entity
-  version: (id: string, versionNumber?: string | number) => ({
-    ...entityQueryKeyObjects.entity(id),
-    versionNumber,
-  }),
+  entity: (id: string, versionNumber?: string | number) => {
+    const key: Record<string, unknown> = {
+      ...entityQueryKeyObjects.all,
+      id: id,
+    }
+    if (versionNumber) {
+      key['version'] = versionNumber
+    }
+    return key
+  },
   // List of Entity Versions
-  versions: (id: string) => ({
-    ...entityQueryKeyObjects.entity(id),
-    scope: 'versions',
-  }),
+  versions: (id: string) => [entityQueryKeyObjects.entity(id), 'versions'],
   versionsQuery: (id: string, limit: number, offset: number) => ({
     ...entityQueryKeyObjects.versions(id),
     versionQuery: {
@@ -53,10 +64,10 @@ const entityQueryKeyObjects = {
     },
   }),
   // JSON Representation of an entity
-  json: (id: string) => ({
-    ...entityQueryKeyObjects.entity(id),
-    scope: 'json',
-  }),
+  json: (id: string, versionNumber?: number) => [
+    entityQueryKeyObjects.entity(id, versionNumber),
+    'json',
+  ],
   // entity actions required
   entityActions: (id: string) => [
     entityQueryKeyObjects.entity(id),
@@ -70,85 +81,83 @@ const entityQueryKeyObjects = {
     entityQueryKeyObjects.entity(id),
     'entityChallenge',
   ],
-  activity: (id: string, versionNumber?: number) => ({
-    ...entityQueryKeyObjects.version(id),
-    scope: 'activity',
-  }),
+  activity: (id: string, versionNumber?: number) => [
+    entityQueryKeyObjects.entity(id, versionNumber),
+    'activity',
+  ],
   // Entity path
-  path: (id: string) => ({
-    ...entityQueryKeyObjects.entity(id),
-    scope: 'path',
-  }),
-
+  path: (id: string) => [entityQueryKeyObjects.entity(id), 'path'],
   // Entity bundle
   bundle: (
     id: string,
     versionNumber: string | number | undefined,
     bundleRequest: EntityBundleRequest,
-  ) => ({
-    ...entityQueryKeyObjects.version(id, versionNumber),
-    scope: 'entityBundle',
-    entityBundleRequest: bundleRequest,
-  }),
-  children: (request: EntityChildrenRequest, infinite: boolean) => ({
-    ...entityQueryKeyObjects.entity(request.parentId ?? 'root'),
-    scope: 'children',
-    isInfinite: infinite,
-    entityChildrenRequest: request,
-  }),
+  ) => [
+    entityQueryKeyObjects.entity(id, versionNumber),
+    'entityBundle',
+    bundleRequest,
+  ],
+  children: (request: EntityChildrenRequest, infinite: boolean) => [
+    entityQueryKeyObjects.entity(request.parentId ?? 'root'),
+    'children',
+    { isInfinite: infinite, entityChildrenRequest: request },
+  ],
 
   tableQueryResult: (
     queryBundleRequest: QueryBundleRequest,
     infinite: boolean,
-  ) => ({
-    ...entityQueryKeyObjects.entity(queryBundleRequest.entityId),
-    scope: 'tableQueryResult',
-    isInfinite: infinite,
-    tableQueryBundleRequest: queryBundleRequest,
-  }),
+  ) => [
+    entityQueryKeyObjects.entity(queryBundleRequest.entityId),
+    'tableQueryResult',
+    {
+      isInfinite: infinite,
+      tableQueryBundleRequest: queryBundleRequest,
+    },
+  ],
 
   tableQueryResultWithAsyncStatus: (
     queryBundleRequest: QueryBundleRequest,
     infinite: boolean,
-  ) => ({
-    ...entityQueryKeyObjects.entity(queryBundleRequest.entityId),
-    scope: 'tableQueryResultWithAsyncStatus',
-    isInfinite: infinite,
-    tableQueryBundleRequest: queryBundleRequest,
-  }),
+  ) => [
+    entityQueryKeyObjects.entity(queryBundleRequest.entityId),
+    'tableQueryResultWithAsyncStatus',
+    {
+      isInfinite: infinite,
+      tableQueryBundleRequest: queryBundleRequest,
+    },
+  ],
 
   fullTableQueryResult: (
     queryBundleRequest: QueryBundleRequest,
     forceAnonymous: boolean,
-  ) => ({
-    ...entityQueryKeyObjects.entity(queryBundleRequest.entityId),
-    scope: 'fullTableQueryResult',
-    tableQueryBundleRequest: queryBundleRequest,
-    forceAnonymous,
-  }),
+  ) => [
+    entityQueryKeyObjects.entity(queryBundleRequest.entityId),
+    'fullTableQueryResult',
+    { tableQueryBundleRequest: queryBundleRequest, forceAnonymous },
+  ],
 
-  boundJSONSchema: (id: string) => ({
-    ...entityQueryKeyObjects.entity(id),
-    scope: 'boundJSONSchema',
-  }),
+  boundJSONSchema: (id: string) => [
+    entityQueryKeyObjects.entity(id),
+    'boundJSONSchema',
+  ],
 
-  schemaValidationResults: (id: string) => ({
-    ...entityQueryKeyObjects.entity(id),
-    scope: 'schemaValidationResults',
-  }),
-  header: (id: string, versionNumber?: number) => ({
-    ...entityQueryKeyObjects.version(id, versionNumber),
-    scope: 'entityHeaders',
-  }),
-  headers: (references: ReferenceList) => ({
-    ...entityQueryKeyObjects.all,
-    scope: 'entityHeaders',
-    entityHeadersRequest: references,
-  }),
-  accessRequirements: (id: string) => ({
-    ...entityQueryKeyObjects.entity(id),
-    scope: 'accessRequirements',
-  }),
+  schemaValidationResults: (id: string) => [
+    entityQueryKeyObjects.entity(id),
+    'schemaValidationResults',
+  ],
+  header: (id: string, versionNumber?: number) => [
+    entityQueryKeyObjects.entity(id, versionNumber),
+    'entityHeaders',
+  ],
+  headers: (references: ReferenceList) => [
+    entityQueryKeyObjects.all,
+    'entityHeaders',
+    references,
+  ],
+  accessRequirements: (id: string) => [
+    entityQueryKeyObjects.entity(id),
+    'accessRequirements',
+  ],
 }
 
 const downloadListQueryKeys = {
@@ -194,10 +203,10 @@ export class KeyFactory {
    * @param args
    * @private
    */
-  private getKey(...args: any[]): QueryKey {
+  private getKey(...args: unknown[]): QueryKey {
     return [
       this.accessToken == null
-        ? this.accessToken
+        ? 'anonymous'
         : btoa(String(hashCode(this.accessToken))),
       ...removeTrailingUndefinedElements(args),
     ]
@@ -228,7 +237,7 @@ export class KeyFactory {
   }
 
   public getEntityVersionQueryKey(id: string, versionNumber?: string | number) {
-    return this.getKey(entityQueryKeyObjects.version(id, versionNumber))
+    return this.getKey(entityQueryKeyObjects.entity(id, versionNumber))
   }
 
   public getPaginatedEntityVersionsQueryKey(
@@ -249,8 +258,12 @@ export class KeyFactory {
     return this.getKey(entityQueryKeyObjects.children(request, infinite))
   }
 
-  public getEntityJsonQueryKey(id: string, includeDerivedAnnotations: boolean) {
-    return this.getKey(entityQueryKeyObjects.json(id), {
+  public getEntityJsonQueryKey(
+    id: string,
+    versionNumber: number | undefined,
+    includeDerivedAnnotations: boolean,
+  ) {
+    return this.getKey(entityQueryKeyObjects.json(id, versionNumber), {
       includeDerivedAnnotations,
     })
   }
@@ -470,6 +483,13 @@ export class KeyFactory {
     return this.getKey('uploadDestination', 'default', containerEntityId)
   }
 
+  public getUploadDestinationForStorageLocationQueryKey(
+    parentId: string,
+    storageLocationId: number,
+  ) {
+    return this.getKey('uploadDestination', parentId, storageLocationId)
+  }
+
   public getForumModeratorsQueryKey(forumId: string) {
     return this.getKey('moderators', forumId)
   }
@@ -595,8 +615,12 @@ export class KeyFactory {
     return this.getKey('team', teamId, 'member', userId)
   }
 
-  public getMembershipStatusQueryKey(teamId: string, userId: string) {
+  public getMembershipStatusQueryKey(teamId: string, userId?: string) {
     return this.getKey('team', teamId, 'membershipStatus', userId)
+  }
+
+  public getAllOpenMembershipInvitationsForUserQueryKey(userId: string) {
+    return this.getKey('openMembershipInvitations', userId)
   }
 
   public getTeamAccessRequirementsQueryKey(teamId: string) {
@@ -627,9 +651,20 @@ export class KeyFactory {
   public getUserChallengesQueryKey(userId: string) {
     return this.getKey('userChallenges', userId)
   }
+  public getPassingRecordQueryKey(userId: string) {
+    return this.getKey('passingRecord', userId)
+  }
 
-  public getSubmissionTeamsQueryKey(challengeId: string) {
-    return this.getKey('submissionTeams', challengeId)
+  public getAllSubmissionTeamsQueryKeys() {
+    return this.getKey('submissionTeams')
+  }
+
+  public getSubmissionTeamsQueryKey(
+    challengeId: string,
+    limit?: number,
+    offset?: number,
+  ) {
+    return this.getKey('submissionTeams', challengeId, { limit, offset })
   }
 
   public getUserProjectsQueryKey(
@@ -637,6 +672,10 @@ export class KeyFactory {
     projectParams: GetProjectsParameters,
   ) {
     return this.getKey('userProjects', userId, projectParams)
+  }
+
+  public getAllUserTeamsQueryKey() {
+    return this.getKey('userTeams')
   }
 
   public getUserTeamsQueryKey(userId: string) {
@@ -659,8 +698,32 @@ export class KeyFactory {
     return this.getKey('user', 'current', 'profile')
   }
 
-  public getUserBundleQueryKey(userId: string, mask?: number) {
-    return this.getKey('user', userId, 'bundle', mask)
+  public getUserBundleQueryKey(userId: string, mask: number) {
+    // Convert the mask into an object, where the field is only included (with value true) iff the bit in the mask is set
+    const maskObject = {
+      ...((mask & USER_BUNDLE_MASK_USER_PROFILE) !== 0
+        ? { isUserProfile: true }
+        : undefined),
+      ...((mask & USER_BUNDLE_MASK_ORCID) !== 0
+        ? { isOrcId: true }
+        : undefined),
+      ...((mask & USER_BUNDLE_MASK_VERIFICATION_SUBMISSION) !== 0
+        ? { isVerificationSubmission: true }
+        : undefined),
+      ...((mask & USER_BUNDLE_MASK_IS_CERTIFIED) !== 0
+        ? { isCertified: true }
+        : undefined),
+      ...((mask & USER_BUNDLE_MASK_IS_VERIFIED) !== 0
+        ? { isVerified: true }
+        : undefined),
+      ...((mask & USER_BUNDLE_MASK_IS_ACT_MEMBER) !== 0
+        ? { isACT: true }
+        : undefined),
+      ...((mask & USER_BUNDLE_MASK_IS_AR_REVIEWER) !== 0
+        ? { isARReviewer: true }
+        : undefined),
+    }
+    return this.getKey('user', userId, 'bundle', maskObject)
   }
 
   public getUserProfileQueryKey(userId: string) {
@@ -718,5 +781,12 @@ export class KeyFactory {
     request: Omit<ViewColumnModelRequest, 'nextPageToken'>,
   ) {
     return this.getKey('annotationColumnModels', request)
+  }
+
+  public getEvaluationByIdQueryKey(evalId: string) {
+    return this.getKey('evaluation', evalId)
+  }
+  public getEvaluationsQueryKey(request: GetEvaluationParameters) {
+    return this.getKey('evaluation', 'paginated', request)
   }
 }

@@ -60,11 +60,9 @@ function SubmissionCommitList({
         return (
           <RadioOption
             value={params.id as string}
-            currentValue={selectedCommit?.digest}
+            checked={params.id === selectedCommit?.digest}
             onChange={commitChangeHandler}
             label=""
-            groupId="radiogroup"
-            style={{ marginBottom: '16px' }}
           />
         )
       },
@@ -135,19 +133,17 @@ function SubmissionCommitList({
       </Box>
       <Box>
         <DataGrid
-          initialState={{ pagination: { page: page } }}
           loading={isLoading}
           columns={columns}
           rows={getPageData()}
-          pageSize={PER_PAGE}
           rowCount={commitResults?.totalNumberOfResults ?? 0}
-          page={page}
           pagination
           paginationMode="server"
-          onPageChange={n => handlePageChange(n)}
+          paginationModel={{ page, pageSize: PER_PAGE }}
+          onPaginationModelChange={({ page }) => handlePageChange(page)}
+          pageSizeOptions={[PER_PAGE]}
           density="compact"
           autoHeight
-          rowsPerPageOptions={[PER_PAGE]}
           sx={{
             fontSize: '14px',
             border: 'none',
@@ -160,6 +156,11 @@ function SubmissionCommitList({
             },
             '.MuiDataGrid-columnHeaderTitleContainer': {
               justifyContent: 'space-between',
+            },
+            '.radio': {
+              display: 'flex',
+              alignItems: 'center',
+              height: '100%',
             },
           }}
           getRowClassName={params =>

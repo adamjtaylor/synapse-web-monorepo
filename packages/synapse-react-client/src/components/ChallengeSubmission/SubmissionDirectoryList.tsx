@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Box, Button, Typography } from '@mui/material'
 import { DataGrid, GridCellParams, GridColDef } from '@mui/x-data-grid'
 import { RadioOption } from '../widgets/RadioGroup'
@@ -37,7 +37,7 @@ import { FileEntity } from '@sage-bionetworks/synapse-types'
 import { SynapseClientError } from '../../utils/SynapseClientError'
 import { EntityItem } from './ChallengeSubmission'
 import ConfirmationDialog from '../ConfirmationDialog'
-import { useQueryClient } from 'react-query'
+import { useQueryClient } from '@tanstack/react-query'
 
 type SubmissionDirectoryRow = {
   id: string
@@ -69,7 +69,7 @@ function SubmissionDirectoryList({
   const [errorMessage, setErrorMessage] = useState<string>()
   const [canSubmit, setCanSubmit] = useState<boolean>()
   const [fetchedHeaders, setFetchedHeaders] = useState<EntityHeader[]>([])
-  const [nextPageToken, setNextPageToken] = useState<string | null>(null)
+  const [nextPageToken, setNextPageToken] = useState<string | undefined>()
   const [fetchNextPage, setFetchNextPage] = useState<boolean>(false)
   const [confirmOpen, setConfirmOpen] = useState<boolean>(false)
   const [uploadAttempt, setUploadAttempt] = useState<FileUploadAttempt>()
@@ -91,17 +91,23 @@ function SubmissionDirectoryList({
 
   const { data: headerResults, refetch } = useGetEntityChildren(request, {
     enabled: !!challengeProjectId,
-    useErrorBoundary: true,
-    onSuccess: data => {
+    throwOnError: true,
+  })
+
+  useEffect(() => {
+    if (headerResults) {
       const newHeaders = [...fetchedHeaders]
       const headerPage = Math.floor(((page + 1) * PER_PAGE) / HEADERS_PER_PAGE)
       const start = headerPage * HEADERS_PER_PAGE
-      newHeaders.splice(start, start + HEADERS_PER_PAGE, ...data.page)
+      newHeaders.splice(start, start + HEADERS_PER_PAGE, ...headerResults.page)
       setFetchedHeaders(newHeaders)
       setFetchNextPage(false)
-      setNextPageToken(data.nextPageToken)
-    },
-  })
+      setNextPageToken(headerResults.nextPageToken)
+    }
+    // TODO: Temporary useEffect hook to remove onSuccess QueryOption for @tanstack/react-query v5
+    // Refactor this component to remove this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [headerResults])
 
   function getPageHeaders() {
     const pageStart = page * PER_PAGE
@@ -113,7 +119,7 @@ function SubmissionDirectoryList({
     setErrorMessage(undefined)
     setCanSubmit(undefined)
     setFetchedHeaders([])
-    setNextPageToken(null)
+    setNextPageToken(undefined)
     setFetchNextPage(false)
     refetch()
   }
@@ -123,9 +129,15 @@ function SubmissionDirectoryList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityType, pageSize])
 
-  const { isLoading: areEntitiesLoading, data: entities } = useGetEntities(
-    getPageHeaders(),
+  const queries = useGetEntities(getPageHeaders())
+  const entities = useMemo(
+    () =>
+      queries
+        .filter(q => q.status === 'success')
+        .map(q => q.data) as EntityItem[],
+    [queries],
   )
+  const areEntitiesLoading = queries.some(q => q.isLoading)
 
   const entityChangeHandler = async (value: string) => {
     setCanSubmit(false)
@@ -168,13 +180,11 @@ function SubmissionDirectoryList({
         return (
           <RadioOption
             value={params.id}
-            currentValue={selectedItem?.id}
+            checked={params.id === selectedItem?.id}
             onChange={selectedItemId => {
               entityChangeHandler(selectedItemId as string)
             }}
             label=""
-            groupId="radiogroup"
-            style={{ marginBottom: '16px' }}
           />
         )
       },
@@ -375,19 +385,19 @@ function SubmissionDirectoryList({
       </Box>
       <Box>
         <DataGrid
-          initialState={{ pagination: { page: page } }}
           loading={areEntitiesLoading}
           columns={columns}
           rows={getRows(entities)}
-          pageSize={PER_PAGE}
           rowCount={headerResults?.totalChildCount ?? 0}
-          page={page}
           pagination
           paginationMode="server"
-          onPageChange={n => handlePageChange(n)}
+          paginationModel={{ page, pageSize: PER_PAGE }}
+          pageSizeOptions={[PER_PAGE]}
+          onPaginationModelChange={({ page }) => {
+            handlePageChange(page)
+          }}
           density="compact"
           autoHeight
-          rowsPerPageOptions={[PER_PAGE]}
           sx={{
             fontSize: '14px',
             border: 'none',
@@ -400,6 +410,11 @@ function SubmissionDirectoryList({
             },
             '.MuiDataGrid-columnHeaderTitleContainer': {
               justifyContent: 'space-between',
+            },
+            '.radio': {
+              display: 'flex',
+              alignItems: 'center',
+              height: '100%',
             },
           }}
           getRowClassName={params =>

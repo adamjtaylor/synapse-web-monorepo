@@ -1,4 +1,5 @@
 import ACCESS_TYPE from '../ACCESS_TYPE'
+import { ACCESS_REQUIREMENT_CONCRETE_TYPE } from './AccessRequirement'
 
 export type AccessRequirementSearchSort = {
   field: 'CREATED_ON' | 'NAME'
@@ -8,6 +9,8 @@ export type AccessRequirementSearchSort = {
 export interface AccessRequirementSearchRequest {
   /** Optional substring used to filter Access Requirements by name */
   nameContains?: string
+  /** Optional list of ids used to filter access requirements with specific ids. */
+  ids?: number[]
   /** Optional id used to filter Access Requirements to retrieve only those that have been applied within a particular project. */
   relatedProjectId?: string
   /** Optional principal ID used to filter Access Requirements to retrieve only those that can be reviewed by the specific reviewer. */
@@ -22,6 +25,8 @@ export interface AccessRequirementSearchRequest {
 export type AccessRequirementSearchResult = {
   /** The id of the AR */
   id: string
+  /** The concrete type of the AR */
+  type: ACCESS_REQUIREMENT_CONCRETE_TYPE
   /** The creation date of the AR */
   createdOn: string
   /** The last modification date of the AR */

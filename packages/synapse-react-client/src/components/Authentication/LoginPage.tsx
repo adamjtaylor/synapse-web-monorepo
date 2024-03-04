@@ -33,7 +33,7 @@ const Tagline: StyledComponent<TypographyProps> = styled(Typography, {
   label: 'Tagline',
 })(({ theme }) => ({
   marginBottom: theme.spacing(2),
-  font: '300 24px/34px Lato, sans-serif',
+  font: '300 24px/34px DM Sans, sans-serif',
 }))
 
 function BackupCodeInstructions(props: TypographyProps) {
@@ -77,7 +77,7 @@ export default function LoginPage(props: LoginPageProps) {
   const loginForm = (
     <Stack
       alignItems={'stretch'}
-      sx={{ height: '100%', width: '325px', mx: 'auto' }}
+      sx={{ height: '100%', width: '330px', mx: 'auto' }}
     >
       {!showDesktop && (
         <Stack flexDirection={'row'}>

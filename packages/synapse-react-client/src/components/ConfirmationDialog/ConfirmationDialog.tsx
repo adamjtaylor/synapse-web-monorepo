@@ -1,51 +1,48 @@
 import { Button, ButtonProps } from '@mui/material'
 import React from 'react'
 import { DialogBase, DialogBaseProps } from '../DialogBase'
+import { defaults } from 'lodash-es'
 
 export type ConfirmationButtonsProps = {
   onConfirm: React.MouseEventHandler<HTMLButtonElement>
   onCancel: DialogBaseProps['onCancel']
-  confirmButtonText?: string
-  confirmButtonClassName?: string
-  confirmButtonColor?: ButtonProps['color']
-  confirmButtonVariant?: ButtonProps['variant']
-  confirmButtonDisabled?: boolean
+  confirmButtonProps?: Omit<ButtonProps, 'onClick'>
+  cancelButtonProps?: Omit<ButtonProps, 'onClick'>
   hasCancelButton?: boolean
 }
 
 export const CANCEL_BUTTON_TEXT = 'Cancel'
 
-export function CancelButton(props: { onCancel: () => void }) {
-  return (
-    <Button variant="outlined" onClick={() => props.onCancel()}>
-      {CANCEL_BUTTON_TEXT}
-    </Button>
-  )
+const DEFAULT_CONFIRM_BUTTON_PROPS: Omit<ButtonProps, 'onClick'> = {
+  children: 'OK',
+  color: 'primary',
+  variant: 'contained',
+}
+
+const DEFAULT_CANCEL_BUTTON_PROPS: Omit<ButtonProps, 'onClick'> = {
+  children: CANCEL_BUTTON_TEXT,
+  variant: 'outlined',
 }
 
 export const ConfirmationButtons = (props: ConfirmationButtonsProps) => {
-  const {
-    confirmButtonText = 'OK',
-    confirmButtonClassName,
-    confirmButtonColor = 'primary',
-    confirmButtonVariant = 'contained',
-    confirmButtonDisabled = false,
-    onConfirm,
-    onCancel,
-    hasCancelButton = true,
-  } = props
+  const { onConfirm, onCancel, hasCancelButton = true } = props
+
+  const confirmButtonProps: Omit<ButtonProps, 'onClick'> = defaults(
+    {},
+    props.confirmButtonProps,
+    DEFAULT_CONFIRM_BUTTON_PROPS,
+  )
+
+  const cancelButtonProps: Omit<ButtonProps, 'onClick'> = defaults(
+    {},
+    props.cancelButtonProps,
+    DEFAULT_CANCEL_BUTTON_PROPS,
+  )
+
   return (
     <>
-      {hasCancelButton && <CancelButton onCancel={onCancel} />}
-      <Button
-        variant={confirmButtonVariant}
-        className={confirmButtonClassName}
-        color={confirmButtonColor}
-        onClick={onConfirm}
-        disabled={confirmButtonDisabled}
-      >
-        {confirmButtonText}
-      </Button>
+      {hasCancelButton && <Button {...cancelButtonProps} onClick={onCancel} />}
+      <Button {...confirmButtonProps} onClick={onConfirm} />
     </>
   )
 }
@@ -57,14 +54,11 @@ export type ConfirmationDialogProps = DialogBaseProps & ConfirmationButtonsProps
  */
 export function ConfirmationDialog(props: ConfirmationDialogProps) {
   const {
-    confirmButtonText,
-    confirmButtonClassName,
-    confirmButtonColor,
-    confirmButtonVariant,
-    confirmButtonDisabled,
     onConfirm,
     onCancel,
     hasCancelButton,
+    confirmButtonProps,
+    cancelButtonProps,
     ...rest
   } = props
   return (
@@ -72,11 +66,8 @@ export function ConfirmationDialog(props: ConfirmationDialogProps) {
       onCancel={onCancel}
       actions={
         <ConfirmationButtons
-          confirmButtonText={confirmButtonText}
-          confirmButtonClassName={confirmButtonClassName}
-          confirmButtonColor={confirmButtonColor}
-          confirmButtonVariant={confirmButtonVariant}
-          confirmButtonDisabled={confirmButtonDisabled}
+          confirmButtonProps={confirmButtonProps}
+          cancelButtonProps={cancelButtonProps}
           onConfirm={onConfirm}
           onCancel={onCancel}
           hasCancelButton={hasCancelButton}

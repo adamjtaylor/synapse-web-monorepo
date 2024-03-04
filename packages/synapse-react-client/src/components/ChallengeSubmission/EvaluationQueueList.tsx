@@ -39,11 +39,9 @@ function EvaluationQueueList({
         return (
           <RadioOption
             value={params.id as string}
-            currentValue={selectedEvaluation}
+            checked={params.id === selectedEvaluation}
             onChange={onEvaluationChange}
             label=""
-            groupId="radiogroup"
-            style={{ marginBottom: '16px' }}
           />
         )
       },
@@ -85,9 +83,8 @@ function EvaluationQueueList({
         density="compact"
         autoHeight
         loading={isLoading}
-        components={{
-          Header: () => null,
-          Toolbar: () => null,
+        slots={{
+          toolbar: () => null,
         }}
         sx={{
           fontSize: '14px',
@@ -104,6 +101,11 @@ function EvaluationQueueList({
           },
           '.MuiDataGrid-columnHeaderTitleContainer': {
             justifyContent: 'space-between',
+          },
+          '.radio': {
+            display: 'flex',
+            alignItems: 'center',
+            height: '100%',
           },
         }}
         getRowClassName={params =>

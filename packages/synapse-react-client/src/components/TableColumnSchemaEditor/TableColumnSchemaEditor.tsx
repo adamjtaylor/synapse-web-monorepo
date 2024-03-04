@@ -1,26 +1,24 @@
 import React, { useCallback, useMemo, useRef } from 'react'
 import {
-  useGetEntity,
-  useGetQueryResultBundleWithAsyncStatus,
+  useGetEntityBundle,
   useUpdateTableColumns,
 } from '../../synapse-queries'
-import { BUNDLE_MASK_QUERY_COLUMN_MODELS } from '../../utils/SynapseConstants'
-import { useDeepCompareMemoize } from 'use-deep-compare-effect'
 import { SkeletonTable } from '../Skeleton'
 import { convertToEntityType } from '../../utils/functions/EntityTypeUtils'
 import TableColumnSchemaForm, { SubmitHandle } from './TableColumnSchemaForm'
-import { Alert, Button } from '@mui/material'
-import { ColumnModelFormData } from './TableColumnSchemaFormReducer'
-import {
-  getViewScopeForEntity,
-  transformFormDataToColumnModels,
-} from './TableColumnSchemaEditorUtils'
-import { useSynapseContext } from '../../utils'
-import { ViewScope } from '@sage-bionetworks/synapse-types'
-import { Provider } from 'jotai'
+import { Alert } from '@mui/material'
+import { getViewScopeForEntity } from './TableColumnSchemaEditorUtils'
+import { ColumnModel, ViewScope } from '@sage-bionetworks/synapse-types'
+import { SetOptional } from 'type-fest'
+import { SynapseSpinner } from '../LoadingScreen/LoadingScreen'
+import { isUndefined, noop, omitBy } from 'lodash-es'
+import { ConfirmationDialog } from '../ConfirmationDialog'
 
 export type TableColumnSchemaEditorProps = {
   entityId: string
+  open: boolean
+  onColumnsUpdated?: () => void
+  onCancel?: () => void
 }
 
 /**
@@ -28,48 +26,52 @@ export type TableColumnSchemaEditorProps = {
  * @param props
  * @constructor
  */
-function _TableColumnSchemaEditor(props: TableColumnSchemaEditorProps) {
-  const { entityId } = props
+export default function TableColumnSchemaEditor(
+  props: TableColumnSchemaEditorProps,
+) {
+  const { entityId, open, onColumnsUpdated = noop, onCancel = noop } = props
 
   const formRef = useRef<SubmitHandle>(null)
-  const { data: entity, isLoading: isLoadingEntity } = useGetEntity(entityId)
-  const { data: _queryResultBundle, isLoading: isLoadingColumnModels } =
-    useGetQueryResultBundleWithAsyncStatus(
-      {
-        entityId,
-        query: {
-          sql: `SELECT * FROM ${entityId}`,
-        },
-        partMask: BUNDLE_MASK_QUERY_COLUMN_MODELS,
-        concreteType: 'org.sagebionetworks.repo.model.table.QueryBundleRequest',
-      },
-      {
-        // This data is inserted into a form, so don't refetch it.
-        staleTime: Infinity,
-        useErrorBoundary: true,
-      },
-    )
+  const { data: bundle, isLoading } = useGetEntityBundle(
+    entityId,
+    undefined,
+    {
+      includeEntity: true,
+      includeTableBundle: true,
+    },
+    {
+      // This data is inserted into a form, so don't refetch it.
+      staleTime: Infinity,
+      throwOnError: true,
+    },
+  )
 
-  const { mutate, isLoading: isMutating, error } = useUpdateTableColumns()
+  const entity = bundle?.entity
+  const originalColumnModels = bundle?.tableBundle?.columnModels
 
-  const isLoading = isLoadingEntity || isLoadingColumnModels
+  const {
+    mutate,
+    isPending: updateIsPending,
+    error,
+  } = useUpdateTableColumns({
+    onSuccess: () => {
+      onColumnsUpdated()
+    },
+  })
 
-  // TODO: the hook above is not returning a stable reference. this is unexpected.
-  const queryResultBundle = useDeepCompareMemoize(_queryResultBundle)
-  const { accessToken } = useSynapseContext()
   const onSubmit = useCallback(
-    (formData: ColumnModelFormData[]) => {
-      // Transform the form data into ColumnModels
-      const columnModels = transformFormDataToColumnModels(formData)
-
+    (newColumnModels: SetOptional<ColumnModel, 'id'>[]) => {
       // Update the table schema with the new column models.
       mutate({
         entityId,
-        originalColumnModels: queryResultBundle!.responseBody!.columnModels!,
-        newColumnModels: columnModels,
+        originalColumnModels: originalColumnModels!,
+        newColumnModels: newColumnModels.map(cm =>
+          // Remove undefined properties from the new column models
+          omitBy(cm, isUndefined),
+        ) as SetOptional<ColumnModel, 'id'>[],
       })
     },
-    [accessToken, entityId, mutate, queryResultBundle],
+    [entityId, mutate, originalColumnModels],
   )
 
   const viewScope: ViewScope | undefined = useMemo(() => {
@@ -79,7 +81,7 @@ function _TableColumnSchemaEditor(props: TableColumnSchemaEditorProps) {
     return getViewScopeForEntity(entity)
   }, [entity])
 
-  if (isLoading || !entity) {
+  if (isLoading || !bundle || !entity) {
     return (
       <SkeletonTable
         numRows={8}
@@ -91,48 +93,43 @@ function _TableColumnSchemaEditor(props: TableColumnSchemaEditorProps) {
   }
 
   return (
-    <>
-      <TableColumnSchemaForm
-        ref={formRef}
-        entityType={convertToEntityType(entity.concreteType)}
-        viewScope={viewScope}
-        initialData={queryResultBundle?.responseBody?.columnModels}
-        isSubmitting={isMutating}
-        onSubmit={formData => {
-          onSubmit(formData)
-        }}
-      />
-      {error && (
-        <Alert severity={'error'} sx={{ my: 2 }}>
-          {error?.message}
-        </Alert>
-      )}
-
-      <Button
-        variant="contained"
-        color="primary"
-        onClick={() => {
-          if (formRef.current) {
-            formRef.current.submit()
-          }
-        }}
-        disabled={isMutating}
-        sx={{ my: 2 }}
-      >
-        {isMutating ? 'Saving...' : 'Save'}
-      </Button>
-    </>
-  )
-}
-
-export default function TableColumnSchemaEditor(
-  props: TableColumnSchemaEditorProps,
-) {
-  // Wrap in a Jotai provider to ensure the Jotai atomic state is unique to this component tree
-  // i.e. other instances of TableColumnSchemaEditor will not share state with this instance
-  return (
-    <Provider>
-      <_TableColumnSchemaEditor {...props} />
-    </Provider>
+    <ConfirmationDialog
+      open={open}
+      maxWidth={'xl'}
+      title={'Edit Columns'}
+      content={
+        <>
+          <TableColumnSchemaForm
+            ref={formRef}
+            entityType={convertToEntityType(entity.concreteType)}
+            viewScope={viewScope}
+            initialData={bundle?.tableBundle?.columnModels}
+            isSubmitting={updateIsPending}
+            onSubmit={formData => {
+              onSubmit(formData)
+            }}
+          />
+          {error && (
+            <Alert severity={'error'} sx={{ my: 2 }}>
+              {error?.message}
+            </Alert>
+          )}
+        </>
+      }
+      confirmButtonProps={{
+        children: updateIsPending ? 'Saving...' : 'Save',
+        disabled: updateIsPending,
+        startIcon: updateIsPending ? <SynapseSpinner /> : undefined,
+      }}
+      onConfirm={() => {
+        if (formRef.current) {
+          formRef.current.submit()
+        }
+      }}
+      cancelButtonProps={{
+        disabled: updateIsPending,
+      }}
+      onCancel={onCancel}
+    />
   )
 }

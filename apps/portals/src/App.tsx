@@ -4,9 +4,9 @@ import './App.scss'
 import Footer from './Footer'
 import AppInitializer from './AppInitializer'
 import Navbar from './Navbar'
-import CookiesNotification from './CookiesNotification'
 import { CookiesProvider } from 'react-cookie'
 import {
+  CookiesNotification,
   SynapseTheme,
   SynapseToastContainer,
   defaultQueryClientConfig,
@@ -14,7 +14,7 @@ import {
 import { LogInDialogContextProvider } from './LogInDialogContext'
 import { createTheme, ThemeProvider } from '@mui/material'
 import palette from './config/paletteConfig'
-import { QueryClient, QueryClientProvider } from 'react-query'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 const RouteResolver = React.lazy(() => import('./RouteResolver'))
 const theme = createTheme(SynapseTheme.mergeTheme({ palette }))

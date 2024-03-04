@@ -10,14 +10,16 @@ import {
   QueryFilter,
   Row,
 } from '@sage-bionetworks/synapse-types'
-import { FacetFilterHeader } from '../widgets/query-filter/FacetFilterHeader'
-
+import { useQueryVisualizationContext } from '../QueryVisualizationWrapper'
+import PlotPanelHeader from '../Plot/PlotPanelHeader'
 export type QueryWrapperSynapsePlotProps = Pick<
   QueryWrapperPlotNavCustomPlotParams,
   'onCustomPlotClick'
 > &
   Omit<SynapsePlotWidgetParams, 'selectedFacets' | 'additionalFilters'>
-
+type QueryWrapperSynapsePlotInternalProps = {
+  onHide: () => void
+}
 export type QueryWrapperSynapsePlotRowClickEvent = {
   row: Row
   queryContext: QueryContextType
@@ -30,11 +32,12 @@ export type QueryWrapperSynapsePlotRowClickEvent = {
  * @returns
  */
 export default function QueryWrapperSynapsePlot(
-  props: QueryWrapperSynapsePlotProps,
+  props: QueryWrapperSynapsePlotProps & QueryWrapperSynapsePlotInternalProps,
 ) {
   const queryContext = useQueryContext()
   const { currentQueryRequest } = queryContext
-  const { title, onCustomPlotClick } = props
+  const { title, onCustomPlotClick, onHide } = props
+  const { showPlots } = useQueryVisualizationContext()
 
   const widgetParamsMapped: SynapsePlotWidgetParams = useMemo(() => {
     return {
@@ -55,19 +58,16 @@ export default function QueryWrapperSynapsePlot(
     }
   }, [currentQueryRequest.query, onCustomPlotClick, queryContext])
   return (
-    <div className="SynapsePlot">
-      {title && (
-        <FacetFilterHeader
-          hideCollapsible={true}
-          label={title}
-          isCollapsed={false}
-          onClick={() => {}}
-        />
+    <div role="figure" className="SynapsePlot">
+      {showPlots && (
+        <>
+          {title && <PlotPanelHeader title={title} onHide={onHide} />}
+          <SynapsePlot
+            synapsePlotWidgetParams={widgetParamsMapped}
+            customPlotParams={customPlotParams}
+          />
+        </>
       )}
-      <SynapsePlot
-        synapsePlotWidgetParams={widgetParamsMapped}
-        customPlotParams={customPlotParams}
-      />
     </div>
   )
 }

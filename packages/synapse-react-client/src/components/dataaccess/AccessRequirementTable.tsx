@@ -6,7 +6,20 @@ import { formatDate } from '../../utils/functions/DateFormatter'
 import { PRODUCTION_ENDPOINT_CONFIG } from '../../utils/functions/getEndpoint'
 import { useSearchAccessRequirementsInfinite } from '../../synapse-queries/dataaccess/useAccessRequirements'
 import { ACT_TEAM_ID } from '../../utils/SynapseConstants'
-import { ACCESS_TYPE } from '@sage-bionetworks/synapse-types'
+import {
+  ACCESS_REQUIREMENT_CONCRETE_TYPE,
+  ACCESS_TYPE,
+  ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_DISPLAY_VALUE,
+  LOCK_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  LOCK_ACCESS_REQUIREMENT_CONCRETE_TYPE_DISPLAY_VALUE,
+  MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_DISPLAY_VALUE,
+  SELF_SIGN_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  SELF_SIGN_ACCESS_REQUIREMENT_CONCRETE_TYPE_DISPLAY_VALUE,
+  TERMS_OF_USE_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  TERMS_OF_USE_ACCESS_REQUIREMENT_CONCRETE_TYPE_DISPLAY_VALUE,
+} from '@sage-bionetworks/synapse-types'
 import {
   AccessRequirementSearchRequest,
   AccessRequirementSearchSort,
@@ -18,16 +31,39 @@ import { SynapseSpinner } from '../LoadingScreen/LoadingScreen'
 import UserOrTeamBadge from '../UserOrTeamBadge/UserOrTeamBadge'
 
 export type AccessRequirementTableProps = {
-  nameContains?: string
+  nameOrID?: string
   relatedProjectId?: string
   reviewerId?: string
   accessType?: ACCESS_TYPE
   onCreateNewAccessRequirementClicked?: () => void
 }
 
+export function accessRequirementConcreteTypeValueToDisplayValue(
+  accessRequirementConcreteTypeValue: ACCESS_REQUIREMENT_CONCRETE_TYPE,
+) {
+  switch (accessRequirementConcreteTypeValue) {
+    case TERMS_OF_USE_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE:
+      return TERMS_OF_USE_ACCESS_REQUIREMENT_CONCRETE_TYPE_DISPLAY_VALUE
+    case SELF_SIGN_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE: {
+      return SELF_SIGN_ACCESS_REQUIREMENT_CONCRETE_TYPE_DISPLAY_VALUE
+    }
+    case MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE:
+      return MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_DISPLAY_VALUE
+    case ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE:
+      return ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_DISPLAY_VALUE
+    case LOCK_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE:
+      return LOCK_ACCESS_REQUIREMENT_CONCRETE_TYPE_DISPLAY_VALUE
+    default:
+      return 'Unknown'
+  }
+}
+const isIntegerInput = (v: string): boolean => {
+  return /^\d+$/.test(v)
+}
+
 export function AccessRequirementTable(props: AccessRequirementTableProps) {
   const {
-    nameContains,
+    nameOrID,
     relatedProjectId,
     reviewerId,
     accessType,
@@ -40,16 +76,27 @@ export function AccessRequirementTable(props: AccessRequirementTableProps) {
   })
 
   const searchRequest: Omit<AccessRequirementSearchRequest, 'nextPageToken'> =
-    useMemo(
-      () => ({
+    useMemo(() => {
+      // SWC-6615: If the input string is a single integer, assume it's the AR ID.  Otherwise use as the nameContains field.
+      let nameContains: string | undefined = undefined
+      let ids: number[] | undefined = undefined
+      if (nameOrID !== undefined) {
+        const nameOrIDTrimmed = nameOrID.trim()
+        if (isIntegerInput(nameOrIDTrimmed)) {
+          ids = [Number.parseInt(nameOrIDTrimmed)]
+        } else {
+          nameContains = nameOrIDTrimmed
+        }
+      }
+      return {
+        ids,
         nameContains,
         relatedProjectId,
         reviewerId,
         accessType,
         sort: [sort],
-      }),
-      [nameContains, relatedProjectId, reviewerId, accessType, sort],
-    )
+      }
+    }, [nameOrID, relatedProjectId, reviewerId, accessType, sort])
 
   const { data, hasNextPage, fetchNextPage, isLoading } =
     useSearchAccessRequirementsInfinite(searchRequest)
@@ -98,6 +145,7 @@ export function AccessRequirementTable(props: AccessRequirementTableProps) {
                   />
                 </span>
               </th>
+              <th>Type</th>
               <th>Related to Projects</th>
               <th>Reviewer</th>
               <th>Last Modified</th>
@@ -129,6 +177,9 @@ export function AccessRequirementTable(props: AccessRequirementTableProps) {
                     </a>
                   </td>
                   <td>{ar.name}</td>
+                  <td>
+                    {accessRequirementConcreteTypeValueToDisplayValue(ar.type)}
+                  </td>
                   <td>
                     {ar.relatedProjectIds.map(projectId => (
                       <React.Fragment key={projectId}>

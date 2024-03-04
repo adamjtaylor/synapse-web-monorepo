@@ -1,4 +1,4 @@
-import { cloneDeep, partition } from 'lodash-es'
+import { cloneDeep } from 'lodash-es'
 import React, { useMemo, useState } from 'react'
 import { SQL_EDITOR } from '../../../utils/SynapseConstants'
 import {
@@ -35,6 +35,8 @@ import {
 } from '../../QueryWrapper/TableRowSelectionState'
 import CustomControlButton from './CustomControlButton'
 
+const SEND_TO_CAVATICA_BUTTON_ID = 'SendToCavaticaTopLevelControlButton'
+
 export type TopLevelControlsProps = {
   name?: string
   hideDownload?: boolean
@@ -48,7 +50,7 @@ export type TopLevelControlsProps = {
   fileIdColumnName?: string
   fileNameColumnName?: string
   fileVersionColumnName?: string
-  cavaticaHelpURL?: string
+  cavaticaConnectAccountURL?: string
   remount?: () => void
 }
 
@@ -65,12 +67,13 @@ export type CustomControlCallbackData = {
   request?: QueryBundleRequest
 }
 
+// note, all custom controls should check for selected rows in the event (to support row selection)
 export type CustomControl = {
   buttonText: string
   onClick: (event: CustomControlCallbackData) => void
-  isRowSelectionSupported: boolean
   classNames?: string
   icon?: React.ReactNode
+  buttonID?: string // optionally set the ID property of the element
 }
 
 const TopLevelControls = (props: TopLevelControlsProps) => {
@@ -84,17 +87,13 @@ const TopLevelControls = (props: TopLevelControlsProps) => {
     hideSqlEditorControl = true,
     customControls,
     showExportToCavatica = false,
-    cavaticaHelpURL,
+    cavaticaConnectAccountURL,
     fileIdColumnName,
     fileNameColumnName,
     fileVersionColumnName,
     remount,
   } = props
 
-  const [rowSelectionCustomControls, topLevelCustomControls] = partition(
-    customControls,
-    { isRowSelectionSupported: true },
-  )
   const { getInitQueryRequest, hasResettableFilters, getCurrentQueryRequest } =
     useQueryContext()
   const data = useAtomValue(tableQueryDataAtom)
@@ -112,7 +111,7 @@ const TopLevelControls = (props: TopLevelControlsProps) => {
     unitDescription,
     setShowDownloadConfirmation,
     showCopyToClipboard,
-    setShowFacetVisualization,
+    setShowPlots,
     setShowSqlEditor,
     showFacetFilter,
     setShowFacetFilter,
@@ -215,8 +214,8 @@ const TopLevelControls = (props: TopLevelControlsProps) => {
           )}
         </div>
         <div className="TopLevelControls__actions">
-          {topLevelCustomControls &&
-            topLevelCustomControls.map((customControl, index) => {
+          {customControls &&
+            customControls.map((customControl, index) => {
               return (
                 <React.Fragment key={index}>
                   <CustomControlButton
@@ -267,6 +266,7 @@ const TopLevelControls = (props: TopLevelControlsProps) => {
                     setIsShowingExportToCavaticaModal(true)
                   }}
                   startIcon={<Cavatica />}
+                  id={SEND_TO_CAVATICA_BUTTON_ID}
                 >
                   Send {numberOfResultsToInvokeActionAsText} to CAVATICA
                 </Button>
@@ -301,7 +301,7 @@ const TopLevelControls = (props: TopLevelControlsProps) => {
           {!hideVisualizationsControl && (
             <ElementWithTooltip
               tooltipText={'Show / Hide Visualizations'}
-              callbackFn={() => setShowFacetVisualization(value => !value)}
+              callbackFn={() => setShowPlots(value => !value)}
               darkTheme={true}
               icon={'chart'}
             />
@@ -324,7 +324,7 @@ const TopLevelControls = (props: TopLevelControlsProps) => {
 
           {isRowSelectionVisible && (
             <RowSelectionControls
-              customControls={rowSelectionCustomControls}
+              customControls={customControls}
               showExportToCavatica={showExportToCavatica}
               remount={remount}
             />
@@ -338,7 +338,7 @@ const TopLevelControls = (props: TopLevelControlsProps) => {
             />
           )}
           <SendToCavaticaConfirmationDialog
-            cavaticaHelpURL={cavaticaHelpURL}
+            cavaticaConnectAccountURL={cavaticaConnectAccountURL}
             fileIdColumnName={fileIdColumnName}
             fileNameColumnName={fileNameColumnName}
             fileVersionColumnName={fileVersionColumnName}

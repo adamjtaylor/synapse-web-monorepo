@@ -48,7 +48,6 @@ function Navbar() {
   const { accessToken } = useSynapseContext()
   const isSignedIn = !!accessToken
   const history = useHistory()
-
   const { data: userProfile } = SynapseQueries.useGetCurrentUserProfile()
 
   const [showMenu, setShowMenu] = useState(false)
@@ -293,8 +292,11 @@ function Navbar() {
                     })}
                     <Dropdown.Item
                       key="DownloadV2"
+                      onClick={() => {
+                        // In React Router ^6.6.1, change to useNavigate
+                        history.push('/DownloadCart')
+                      }}
                       className="SRC-primary-background-color-hover SRC-nested-color border-bottom-1"
-                      href="/DownloadCart"
                     >
                       Downloads
                     </Dropdown.Item>
@@ -363,7 +365,7 @@ function Navbar() {
                     <React.Fragment key={`${topLevelTo}-${topLevelIndex}`}>
                       {el.routes &&
                         el.routes.map((route, index) => {
-                          const { path: to, link } = route
+                          const { path: to, link, target } = route
                           // Add anchors to the DOM for a crawler to find.  This is an attempt to fix an issue where all routes are Excluded from the index.
                           if (route.hideRouteFromNavbar) {
                             return false
@@ -375,6 +377,7 @@ function Navbar() {
                               key={`${to}-seo-anchor-${index}`}
                               className="crawler-link"
                               href={linkDisplay}
+                              target={target ?? '_self'}
                             >
                               {routeDisplayName}
                             </a>
@@ -391,7 +394,7 @@ function Navbar() {
                         <Dropdown.Menu className="portal-nav-menu">
                           {el.routes &&
                             el.routes.map((route, index) => {
-                              const { path: to } = route
+                              const { path: to, target } = route
                               if (route.hideRouteFromNavbar) {
                                 return false
                               }
@@ -407,6 +410,7 @@ function Navbar() {
                                     className="dropdown-item SRC-primary-background-color-hover SRC-nested-color"
                                     to={linkDisplay}
                                     text={routeDisplayName}
+                                    target={target ?? '_self'}
                                   />
                                 </Dropdown.Item>
                               )

@@ -28,11 +28,11 @@ import { formatDate } from '../../utils/functions/DateFormatter'
 import dayjs from 'dayjs'
 import { Router } from 'react-router-dom'
 import { createMemoryHistory } from 'history'
+import { mockActTeam } from '../../mocks/team/mockTeam'
 
 function renderComponent(props: AccessRequestSubmissionTableProps) {
   const { wrapperFn } = createWrapperAndQueryClient()
   render(
-    // @ts-expect-error - seems to be an obscure type mismatch
     <Router history={createMemoryHistory()}>
       <AccessRequestSubmissionTable {...props} />
     </Router>,
@@ -165,8 +165,10 @@ describe('Access Request Submission Table tests', () => {
       ),
     })
     await screen.findAllByText('@' + MOCK_USER_NAME_2)
-    screen.getByRole('cell', { name: 'Synapse Access and Compliance Team' })
-    screen.getByRole('cell', {
+    await screen.findByRole('cell', {
+      name: mockActTeam.name,
+    })
+    await screen.findByRole('cell', {
       name: formatDate(
         dayjs(mockSubmissionSearchResponse.results[0].createdOn),
       ),

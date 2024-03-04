@@ -4,8 +4,7 @@ import React, { useMemo, useState } from 'react'
 import { Dropdown } from 'react-bootstrap'
 import createPlotlyComponent from 'react-plotly.js/factory'
 import { SizeMe } from 'react-sizeme'
-import { SkeletonInlineBlock } from '../../Skeleton/SkeletonInlineBlock'
-import getColorPalette from '../../ColorGradient/ColorGradient'
+import { getContrastColorPalette } from '../../ColorGradient/ColorGradient'
 import { SynapseConstants } from '../../../utils'
 import SynapseClient from '../../../synapse-client'
 import { useSynapseContext } from '../../../utils/context/SynapseContext'
@@ -18,18 +17,18 @@ import {
 import loadingScreen from '../../LoadingScreen/LoadingScreen'
 import { useQueryVisualizationContext } from '../../QueryVisualizationWrapper'
 import { EnumFacetFilter } from '../query-filter/EnumFacetFilter/EnumFacetFilter'
-import { Box, IconButton, Tooltip } from '@mui/material'
-import { useQuery } from 'react-query'
+import { Box, Tooltip } from '@mui/material'
+import { useQuery } from '@tanstack/react-query'
 import { ConfirmationDialog } from '../../ConfirmationDialog/ConfirmationDialog'
 import { FacetPlotLegendList } from './FacetPlotLegendList'
 import { FacetWithLabel, truncate } from './FacetPlotLegendUtils'
-import IconSvg from '../../IconSvg'
 import { useAtomValue } from 'jotai'
 import {
   isLoadingNewBundleAtom,
   tableQueryDataAtom,
 } from '../../QueryWrapper/QueryWrapper'
 import { getCorrespondingColumnForFacet } from '../../../utils/functions/queryUtils'
+import PlotPanelHeader from '../../Plot/PlotPanelHeader'
 
 const Plot = createPlotlyComponent(Plotly)
 
@@ -80,8 +79,11 @@ export async function extractPlotDataArray(
   plotType: PlotType,
   accessToken?: string,
 ) {
-  const { colorPalette } = getColorPalette(
-    index,
+  const colorPalette = getContrastColorPalette(
+    // Use only the odd palette, using the same offset for all plots until palettes are improved.
+    // See PORTALS-2916
+    'odd', // index % 2 === 0 ? 'even' : 'odd',
+    0, // Math.floor(index / 2),
     facetToPlot.facetValues.length,
   )
 
@@ -241,7 +243,7 @@ export function getPlotStyle(
   const quotient = plotType === 'BAR' ? 0.8 : 0.6
   const width = parentWidth ? parentWidth * quotient : 200
   let height = plotType === 'PIE' ? width : width / 3
-  // max height of .FacetNav row col* is 200px, so the effective plot height max is around 150 unless it's expanded
+  // max height of .PlotsContainer row col* is 200px, so the effective plot height max is around 150 unless it's expanded
   if (height > maxHeight) {
     height = maxHeight
   }
@@ -283,8 +285,8 @@ const FacetNavPanel: React.FunctionComponent<FacetNavPanelProps> = (
   )
   const columnType = columnModel?.columnType as ColumnTypeEnum
 
-  const { data: plotData } = useQuery(
-    [
+  const { data: plotData } = useQuery({
+    queryKey: [
       'extractPlotDataArray',
       facetToPlot,
       columnType,
@@ -292,7 +294,8 @@ const FacetNavPanel: React.FunctionComponent<FacetNavPanelProps> = (
       plotType,
       accessToken,
     ],
-    () =>
+
+    queryFn: () =>
       extractPlotDataArray(
         facetToPlot,
         columnType,
@@ -300,10 +303,9 @@ const FacetNavPanel: React.FunctionComponent<FacetNavPanelProps> = (
         plotType,
         accessToken,
       ),
-    {
-      enabled: !!facetToPlot,
-    },
-  )
+
+    enabled: !!facetToPlot,
+  })
 
   /* rendering functions */
   const ChartSelectionToggle = (): JSX.Element => (
@@ -345,38 +347,22 @@ const FacetNavPanel: React.FunctionComponent<FacetNavPanelProps> = (
           title={plotTitle ?? ''}
           content={<FacetNavPanel {...props} isModalView={true} />}
           hasCancelButton={false}
-          confirmButtonText="Apply Filters"
+          confirmButtonProps={{ children: 'Apply Filters' }}
           onConfirm={() => setShowModal(false)}
         />
         <div
-          role="graphics-document"
+          role="figure"
           className={`FacetNavPanel${isModalView ? '--expanded' : ''}`}
         >
           {!isModalView && (
-            <div className="FacetNavPanel__title">
-              {!data && isLoadingNewBundle ? (
-                <SkeletonInlineBlock width={100} />
-              ) : (
-                <span className="FacetNavPanel__title__name">{plotTitle}</span>
-              )}
-              <div className="FacetNavPanel__title__tools">
-                <EnumFacetFilter facet={facetToPlot} containerAs="Dropdown" />
-                <Tooltip title={'Expand to large graph'}>
-                  <IconButton onClick={() => setShowModal(true)} size={'small'}>
-                    <IconSvg
-                      icon={'openInFull'}
-                      wrap={false}
-                      fontSize={'inherit'}
-                    />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={'Hide graph under Show More'}>
-                  <IconButton onClick={() => onHide()} size={'small'}>
-                    <IconSvg icon={'close'} wrap={false} fontSize={'inherit'} />
-                  </IconButton>
-                </Tooltip>
-              </div>
-            </div>
+            <PlotPanelHeader
+              data={data}
+              isLoadingNewBundle={isLoadingNewBundle}
+              title={plotTitle}
+              facetToPlot={facetToPlot}
+              onHide={onHide}
+              setShowModal={setShowModal}
+            />
           )}
           {isModalView && (
             <>

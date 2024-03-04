@@ -2,78 +2,22 @@ import React, { useEffect, useState } from 'react'
 import { Redirect } from 'react-router-dom'
 import { getSearchParam } from './URLUtils'
 import { SignedTokenInterface } from '@sage-bionetworks/synapse-types'
-import { createTheme, ThemeProvider } from '@mui/material/styles'
-import { sageAccountWebThemeOverrides } from './style/theme'
-import { Theme } from '@mui/material'
 import {
-  useLastLoginInfoState,
-  SynapseTheme,
   SynapseUtilityFunctions,
   useApplicationSessionContext,
+  useFramebuster,
 } from 'synapse-react-client'
 import { AppContextProvider } from './AppContext'
 import { useSourceApp } from './components/useSourceApp'
 
 function AppInitializer(props: { children?: React.ReactNode }) {
-  const [isFramed, setIsFramed] = useState(false)
-  const [appId, setAppId] = useState<string>()
   const [redirectURL, setRedirectURL] = useState<string>()
-  const [theme, setTheme] = useState<Theme>(
-    createTheme(
-      SynapseTheme.defaultMuiThemeOptions,
-      sageAccountWebThemeOverrides,
-    ),
-  )
+
   const [signedToken, setSignedToken] = useState<
     SignedTokenInterface | undefined
   >()
-  const { currentSourceAppNameState } = useLastLoginInfoState()
-  useEffect(() => {
-    // SWC-6294: on mount, detect and attempt a client-side framebuster (mitigation only, easily bypassed by attacker)
-    if (window.top && window.top !== window) {
-      // If not sandboxed, make sure not to show any portal content (in case they block window unload via onbeforeunload)
-      setIsFramed(true)
-      // If sandboxed, this call will cause an uncaught js exception and portal will not load.
-      window.top.location = window.location
-    }
-  }, [])
-
-  useEffect(() => {
-    const searchParamAppId = getSearchParam('appId')
-    const localStorageAppId = localStorage.getItem('sourceAppId')
-    if (searchParamAppId) {
-      localStorage.setItem('sourceAppId', searchParamAppId)
-      setAppId(searchParamAppId)
-    } else if (localStorageAppId) {
-      setAppId(localStorageAppId)
-    } else {
-      // fallback to Sage Bionetworks
-      localStorage.setItem('sourceAppId', 'SAGE')
-      setAppId('SAGE')
-    }
-  }, [])
-
-  const sourceApp = useSourceApp(appId)
-
-  useEffect(() => {
-    if (sourceApp?.friendlyName) {
-      currentSourceAppNameState.set(sourceApp.friendlyName)
-    }
-  }, [currentSourceAppNameState, sourceApp?.friendlyName])
-
-  useEffect(() => {
-    if (sourceApp?.palette) {
-      setTheme(
-        createTheme(
-          SynapseTheme.defaultMuiThemeOptions,
-          sageAccountWebThemeOverrides,
-          {
-            palette: sourceApp.palette,
-          },
-        ),
-      )
-    }
-  }, [sourceApp?.appId])
+  const isFramed = useFramebuster()
+  const { appId } = useSourceApp()
 
   useEffect(() => {
     const searchParamSignedToken = getSearchParam('signedToken')
@@ -123,13 +67,11 @@ function AppInitializer(props: { children?: React.ReactNode }) {
         signedToken,
       }}
     >
-      <ThemeProvider theme={theme}>
-        {acceptsTermsOfUse === false &&
-          location.pathname != '/authenticated/signTermsOfUse' && (
-            <Redirect to="/authenticated/signTermsOfUse" />
-          )}
-        {!isFramed && props.children}
-      </ThemeProvider>
+      {acceptsTermsOfUse === false &&
+        location.pathname != '/authenticated/signTermsOfUse' && (
+          <Redirect to="/authenticated/signTermsOfUse" />
+        )}
+      {!isFramed && props.children}
     </AppContextProvider>
   )
 }

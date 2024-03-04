@@ -10,11 +10,7 @@ import {
 } from '@mui/material'
 import { useAtomValue, useSetAtom } from 'jotai'
 import { selectAtom } from 'jotai/utils'
-import {
-  ColumnModelFormData,
-  JsonSubColumnModelFormData,
-  tableColumnSchemaFormDataAtom,
-} from './TableColumnSchemaFormReducer'
+import { tableColumnSchemaFormDataAtom } from './TableColumnSchemaFormReducer'
 import {
   ColumnTypeEnum,
   EntityType,
@@ -22,8 +18,8 @@ import {
   VIEW_CONCRETE_TYPE_VALUES,
 } from '@sage-bionetworks/synapse-types'
 import { convertToConcreteEntityType } from '../../utils/functions/EntityTypeUtils'
-import React, { useMemo, useState } from 'react'
-import { isEmpty, isEqual } from 'lodash-es'
+import React, { useMemo } from 'react'
+import { isArray, isEmpty, isEqual } from 'lodash-es'
 import {
   canHaveDefault,
   canHaveMaxListLength,
@@ -36,9 +32,16 @@ import {
   getMaxSizeForType,
 } from './TableColumnSchemaEditorUtils'
 import { Checkbox } from '../widgets/Checkbox'
-import JSONArrayEditorModal from '../JSONArrayEditor/JSONArrayEditorModal'
 import { HIERARCHY_VERTICAL_LINE_COMPONENT } from './TableColumnSchemaForm'
 import { InfoTwoTone } from '@mui/icons-material'
+import DefaultValueField from './ColumnModelFormFields/DefaultValueField'
+import MultiValueField from './ColumnModelFormFields/MultiValueField'
+import { ZodIssue } from 'zod'
+import FormHelperText from '@mui/material/FormHelperText'
+import {
+  ColumnModelFormData,
+  JsonSubColumnModelFormData,
+} from './Validators/ColumnModelValidator'
 
 type ColumnModelFormProps = {
   entityType: EntityType
@@ -47,6 +50,8 @@ type ColumnModelFormProps = {
   /* Default Columns are read-only, except for the facetType */
   isDefaultColumn: boolean
   disabled?: boolean
+  /* Can be used to override the schema used for validating ColumnModels */
+  validationErrors?: ZodIssue[] | null
 }
 const jsonSubColumnFieldSx: SxProps = {
   height: '28px',
@@ -55,6 +60,20 @@ const jsonSubColumnFieldSx: SxProps = {
 const topLevelColumnModelFieldSx: SxProps = {
   height: '38px',
   fontSize: '14px',
+}
+
+function renderDefaultValue(
+  defaultValue: string | unknown[] | undefined,
+  columnType: ColumnTypeEnum,
+): string {
+  if (defaultValue == null) {
+    return ''
+  }
+
+  if (isArray(defaultValue)) {
+    return defaultValue.map(String).join(', ')
+  }
+  return defaultValue
 }
 
 /*
@@ -70,15 +89,13 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
     entityType,
     isDefaultColumn,
     disabled = false,
+    validationErrors = null,
   } = props
   const isJsonSubColumn = jsonSubColumnIndex != undefined
   const dispatch = useSetAtom(tableColumnSchemaFormDataAtom)
   const isView = (VIEW_CONCRETE_TYPE_VALUES as readonly string[]).includes(
     convertToConcreteEntityType(entityType),
   )
-
-  const [isShowingRestrictedValuesModal, setIsShowingRestrictedValuesModal] =
-    useState(false)
 
   const columnModelAtom = useMemo(
     () =>
@@ -109,6 +126,19 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
     [isJsonSubColumn],
   )
 
+  const errorsByField = useMemo(() => {
+    if (validationErrors && isArray(validationErrors)) {
+      const errorsByField: Record<string, string> = {}
+      validationErrors.forEach(e => {
+        if (e.path) {
+          errorsByField[e.path[e.path.length - 1]] = e.message
+        }
+      })
+      return errorsByField
+    }
+    return {}
+  }, [validationErrors])
+
   return (
     <>
       {isJsonSubColumn && (
@@ -119,11 +149,11 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
       <Box
         data-testid={`ColumnModelForm`}
         display={'flex'}
-        alignItems={'center'}
+        alignItems={'start'}
         sx={{
           gridColumn: isJsonSubColumn ? '2 / span 1' : ' 1 / span 1',
-          // Style hack to vertically center our custom checkbox component.
-          mb: '-5px',
+          // Checkbox is offset from top; vertical centering causes issues when validation errors are displayed
+          mt: isJsonSubColumn ? '0px' : '5px',
         }}
       >
         <Checkbox
@@ -141,8 +171,8 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
         />
       </Box>
       <Box
+        my={isDefaultColumn ? 'auto' : undefined}
         sx={{
-          my: 'auto',
           gridColumn: isJsonSubColumn
             ? /* If this is a JSON Subcolumn, we reduce the width of this grid column to create space to render the visual hierarchical line */
               '3 / span 1'
@@ -171,16 +201,20 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
               disableInjectingGlobalStyles:
                 DISABLE_INJECTING_GLOBAL_STYLES_VALUE,
               sx: fieldSx,
-              inputProps: {
-                'aria-label': 'Name',
+              slotProps: {
+                input: {
+                  'aria-label': 'Name',
+                },
               },
             }}
             disabled={disabled}
             fullWidth
+            error={!!errorsByField['name']}
+            helperText={errorsByField['name']}
           />
         )}
       </Box>
-      <Box my={'auto'}>
+      <Box my={isDefaultColumn ? 'auto' : undefined}>
         {isDefaultColumn ? (
           getColumnTypeFriendlyName(columnModel.columnType)
         ) : (
@@ -196,11 +230,14 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
                   newColumnType: e.target.value as ColumnTypeEnum,
                 })
               }}
-              inputProps={{
-                'aria-label': 'Column Type',
+              slotProps={{
+                input: {
+                  'aria-label': 'Column Type',
+                },
               }}
               sx={fieldSx}
               disabled={disabled}
+              error={!!errorsByField['columnType']}
             >
               {allowedColumnTypes.map(value => {
                 return (
@@ -210,27 +247,33 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
                 )
               })}
             </Select>
+            {errorsByField['columnType'] && (
+              <FormHelperText color={'error.main'}>
+                {errorsByField['columnType']}
+              </FormHelperText>
+            )}
           </FormControl>
         )}
       </Box>
-      <Box>
+      <Box my={isDefaultColumn ? 'auto' : undefined}>
         {isDefaultColumn ? (
           (columnModel as ColumnModelFormData).maximumSize ?? ''
         ) : (
           <TextField
-            type={'number'}
             value={(columnModel as ColumnModelFormData).maximumSize ?? ''}
             disabled={disabled || !canHaveSize(columnModel.columnType)}
             InputProps={{
               disableInjectingGlobalStyles:
                 DISABLE_INJECTING_GLOBAL_STYLES_VALUE,
 
-              inputProps: {
-                'aria-label': 'Maximum Size',
-                min: 0,
-                max: canHaveSize(columnModel.columnType)
-                  ? getMaxSizeForType(columnModel.columnType)
-                  : undefined,
+              slotProps: {
+                input: {
+                  'aria-label': 'Maximum Size',
+                  min: 1,
+                  max: canHaveSize(columnModel.columnType)
+                    ? getMaxSizeForType(columnModel.columnType)
+                    : undefined,
+                },
               },
               sx: fieldSx,
             }}
@@ -241,20 +284,21 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
                 jsonSubColumnModelIndex: jsonSubColumnIndex,
                 value: {
                   ...columnModel,
-                  maximumSize: parseInt(e.target.value),
+                  maximumSize: e.target.value,
                 },
               })
             }}
             fullWidth
+            error={!!errorsByField['maximumSize']}
+            helperText={errorsByField['maximumSize']}
           />
         )}
       </Box>
-      <Box>
+      <Box my={isDefaultColumn ? 'auto' : undefined}>
         {isDefaultColumn ? (
           (columnModel as ColumnModelFormData).maximumListLength ?? ''
         ) : (
           <TextField
-            type={'number'}
             value={(columnModel as ColumnModelFormData).maximumListLength ?? ''}
             disabled={disabled || !canHaveMaxListLength(columnModel.columnType)}
             onChange={e => {
@@ -264,92 +308,115 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
                 jsonSubColumnModelIndex: jsonSubColumnIndex,
                 value: {
                   ...columnModel,
-                  maximumListLength: parseInt(e.target.value),
+                  maximumListLength: e.target.value,
                 },
               })
             }}
             InputProps={{
               disableInjectingGlobalStyles:
                 DISABLE_INJECTING_GLOBAL_STYLES_VALUE,
-              inputProps: {
-                'aria-label': 'Maximum List Length',
+              slotProps: {
+                input: {
+                  'aria-label': 'Maximum List Length',
+                },
               },
               sx: fieldSx,
             }}
             fullWidth
+            error={!!errorsByField['maximumListLength']}
+            helperText={errorsByField['maximumListLength']}
           />
         )}
       </Box>
-      <Box>
+      <Box my={isDefaultColumn ? 'auto' : undefined}>
         {isDefaultColumn ? (
-          (columnModel as ColumnModelFormData)?.defaultValue ?? ''
+          renderDefaultValue(
+            (columnModel as ColumnModelFormData)?.defaultValue,
+            columnModel.columnType as ColumnTypeEnum,
+          )
         ) : (
-          <TextField
-            fullWidth
-            value={(columnModel as ColumnModelFormData)?.defaultValue ?? ''}
-            disabled={
-              disabled ||
-              !canHaveDefault(columnModel.columnType, isView, isJsonSubColumn)
-            }
-            onChange={e => {
+          <DefaultValueField
+            TextFieldProps={{
+              InputProps: {
+                disableInjectingGlobalStyles:
+                  DISABLE_INJECTING_GLOBAL_STYLES_VALUE,
+                slotProps: {
+                  input: {
+                    'aria-label': 'Default Value',
+                  },
+                },
+                sx: fieldSx,
+              },
+              fullWidth: true,
+              error: !!errorsByField['defaultValue'],
+              helperText: errorsByField['defaultValue'],
+            }}
+            SelectProps={{
+              label: 'Default Value',
+              sx: fieldSx,
+              slotProps: {
+                input: {
+                  'aria-label': 'Default Value',
+                },
+              },
+              error: !!errorsByField['defaultValue'],
+            }}
+            selectFormHelperText={errorsByField['defaultValue']}
+            columnModel={columnModel as ColumnModelFormData}
+            value={(columnModel as ColumnModelFormData)?.defaultValue || null}
+            onChange={value => {
               dispatch({
                 type: 'setColumnModelValue',
                 columnModelIndex,
                 jsonSubColumnModelIndex: jsonSubColumnIndex,
                 value: {
                   ...columnModel,
-                  defaultValue: e.target.value,
+                  defaultValue: value || undefined,
                 },
               })
             }}
-            InputProps={{
-              disableInjectingGlobalStyles:
-                DISABLE_INJECTING_GLOBAL_STYLES_VALUE,
-              inputProps: {
-                'aria-label': 'Default Value',
-              },
-              sx: fieldSx,
-            }}
+            disabled={
+              disabled ||
+              !canHaveDefault(columnModel.columnType, isView, isJsonSubColumn)
+            }
           />
         )}
       </Box>
       <Box>
-        <JSONArrayEditorModal
-          isShowingModal={isShowingRestrictedValuesModal}
-          onConfirm={newValue => {
+        <MultiValueField
+          value={(columnModel as ColumnModelFormData)?.enumValues}
+          onChange={newValue => {
             dispatch({
               type: 'setColumnModelValue',
               columnModelIndex,
               jsonSubColumnModelIndex: jsonSubColumnIndex,
               value: {
                 ...columnModel,
-                enumValues: isEmpty(newValue) ? undefined : newValue,
+                enumValues:
+                  newValue == null || isEmpty(newValue) ? undefined : newValue,
               },
             })
-            setIsShowingRestrictedValuesModal(false)
           }}
-          onCancel={() => setIsShowingRestrictedValuesModal(false)}
-        />
-        <TextField
-          fullWidth
-          value={((columnModel as ColumnModelFormData)?.enumValues ?? []).join(
-            ', ',
-          )}
-          onClick={() => {
-            setIsShowingRestrictedValuesModal(true)
-          }}
-          disabled={
-            disabled ||
-            !canHaveRestrictedValues(columnModel.columnType, isJsonSubColumn)
-          }
-          InputProps={{
-            disableInjectingGlobalStyles: DISABLE_INJECTING_GLOBAL_STYLES_VALUE,
-            // Is readOnly because edits are made with the JSONArrayEditorModal
-            readOnly: true,
-            sx: fieldSx,
-            inputProps: {
-              'aria-label': 'Restrict Values',
+          columnType={columnModel.columnType as ColumnTypeEnum}
+          TextFieldProps={{
+            fullWidth: true,
+            disabled:
+              disabled ||
+              !canHaveRestrictedValues(columnModel.columnType, isJsonSubColumn),
+            InputProps: {
+              disableInjectingGlobalStyles:
+                DISABLE_INJECTING_GLOBAL_STYLES_VALUE,
+              // Is readOnly because edits are made with the JSONArrayEditorModal
+              readOnly: true,
+              sx: fieldSx,
+              slotProps: {
+                input: {
+                  'aria-label': 'Restrict Values',
+                },
+              },
             },
+            error: !!errorsByField['enumValues'],
+            helperText: errorsByField['enumValues'],
           }}
         />
       </Box>
@@ -371,9 +438,12 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
               })
             }}
             sx={fieldSx}
-            inputProps={{
-              'aria-label': 'Facet Type',
+            slotProps={{
+              input: {
+                'aria-label': 'Facet Type',
+              },
             }}
+            error={!!errorsByField['facetType']}
           >
             {(allowedFacetTypes ?? []).map((value, index) => {
               return (
@@ -383,6 +453,11 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
               )
             })}
           </Select>
+          {errorsByField['facetType'] && (
+            <FormHelperText color={'error.main'}>
+              {errorsByField['facetType']}
+            </FormHelperText>
+          )}
         </FormControl>
       </Box>
       {isJsonSubColumn && (
@@ -447,10 +522,12 @@ export default function ColumnModelForm(props: ColumnModelFormProps) {
                     <InfoTwoTone sx={{ color: 'grey.700' }} />
                   </Tooltip>
                 ),
-                inputProps: {
-                  'aria-label': 'JSON Path',
+                slotProps: {
+                  input: { 'aria-label': 'JSON Path' },
                 },
               }}
+              error={!!errorsByField['jsonPath']}
+              helperText={errorsByField['jsonPath']}
             />
           </Box>
         </>

@@ -1,17 +1,12 @@
 import { SynapseConfig } from 'types/portal-config'
 import {
+  cavaticaConnectAccountURL,
   cohortBuilderFilesSql,
   cohortBuilderSql,
   defaultSearchConfiguration,
 } from '../resources'
-import {
-  handleParticipantsToFiles,
-  handleSelectedParticipantsToFiles,
-} from './handleParticipantsToFiles'
-import {
-  handleFilesToParticipants,
-  handleSelectedFilesToParticipants,
-} from './handleFilesToParticipants'
+import { handleSelectedParticipantsToFiles } from './handleParticipantsToFiles'
+import { handleSelectedFilesToParticipants } from './handleFilesToParticipants'
 import {
   QueryWrapperSynapsePlotProps,
   QueryWrapperSynapsePlotRowClickEvent,
@@ -77,6 +72,13 @@ export const individualsView: SynapseConfig = {
     facetsToPlot: ['Sex', 'dataTypes', 'Assays', 'Diagnosis', 'fileFormat'],
     isRowSelectionVisible: true,
     rowSelectionPrimaryKey: ['individualID'],
+    helpConfiguration: [
+      {
+        columnName: 'individualID',
+        helpText:
+          'A unique identifier that represents a study participant in this system. Individual IDs in our system do not match study-specific participant IDs.',
+      },
+    ],
     combineRangeFacetConfig: {
       label: 'Age',
       minFacetColumn: 'minAge',
@@ -95,25 +97,19 @@ export const individualsView: SynapseConfig = {
         },
       ],
     },
-    additionalFiltersLocalStorageKey: 'cohort-builder-individuals-perspective',
+    additionalFiltersSessionStorageKey:
+      'cohort-builder-individuals-perspective',
     customControls: [
-      {
-        buttonText: 'View files in selection',
-        onClick: (event) => {
-          handleSelectedParticipantsToFiles(event)
-        },
-        isRowSelectionSupported: true,
-      },
       {
         buttonText: 'View associated files',
         onClick: (event) => {
-          handleParticipantsToFiles(event)
+          handleSelectedParticipantsToFiles(event)
         },
-        isRowSelectionSupported: false,
+        buttonID: 'ViewAllFilesButton',
       },
     ],
     sql: cohortBuilderSql,
-    shouldDeepLink: true,
+    shouldDeepLink: false,
     searchConfiguration: defaultSearchConfiguration,
   },
 }
@@ -127,11 +123,11 @@ export const filesView: SynapseConfig = {
     fileIdColumnName: 'id',
     fileNameColumnName: 'name',
     fileVersionColumnName: 'fileVersion',
-    cavaticaHelpURL: '/Limited%20Data%20Commons',
+    cavaticaConnectAccountURL: cavaticaConnectAccountURL,
     visibleColumnCount: 10,
     isRowSelectionVisible: true,
     rowSelectionPrimaryKey: ['id'],
-    additionalFiltersLocalStorageKey: 'cohort-builder-files-perspective',
+    additionalFiltersSessionStorageKey: 'cohort-builder-files-perspective',
     combineRangeFacetConfig: {
       label: 'Age',
       minFacetColumn: 'minAge',
@@ -155,21 +151,13 @@ export const filesView: SynapseConfig = {
 
     customControls: [
       {
-        buttonText: 'View participants in selection',
+        buttonText: 'View associated participants',
         onClick: (event) => {
           handleSelectedFilesToParticipants(event)
         },
-        isRowSelectionSupported: true,
-      },
-      {
-        buttonText: 'View associated participants',
-        onClick: (event) => {
-          handleFilesToParticipants(event)
-        },
-        isRowSelectionSupported: false,
       },
     ],
-    shouldDeepLink: true,
+    shouldDeepLink: false,
     searchConfiguration: defaultSearchConfiguration,
   },
 }

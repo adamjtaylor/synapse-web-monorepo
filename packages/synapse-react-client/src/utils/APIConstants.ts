@@ -44,6 +44,10 @@ export const ENTITY_HEADER_BY_ID = (id: string | number) =>
 export const ENTITY_HEADERS = `${REPO}/entity/header`
 
 export const ENTITY_JSON = (id: string | number) => `${REPO}/entity/${id}/json`
+export const ENTITY_VERSION_JSON = (
+  id: string | number,
+  versionNumber: number,
+) => `${REPO}/entity/${id}/version/${versionNumber}/json`
 
 export const ENTITY_SCHEMA = (id: string | number) =>
   `${REPO}/entity/${id}/schema`
@@ -132,8 +136,6 @@ export const APPROVED_SUBMISSION_INFO = (
 
 export const EVALUATION = `${REPO}/evaluation`
 export const EVALUATION_BY_ID = (id: string | number) => EVALUATION + `/${id}`
-export const EVALUATIONS_BY_ID = (ids: string[] | number[]) =>
-  EVALUATION + `/?evaluationIds=${ids.join(',')}&limit=${ids.length}`
 
 export const ACTIVITY_FOR_ENTITY = (entityId: string, versionNumber?: string) =>
   versionNumber

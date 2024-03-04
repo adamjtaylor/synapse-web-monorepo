@@ -1,6 +1,6 @@
 import { ColumnTypeEnum } from '@sage-bionetworks/synapse-types'
+import { ColumnModelFormData } from './Validators/ColumnModelValidator'
 import {
-  ColumnModelFormData,
   getDefaultColumnModelFormData,
   getDefaultJsonSubColumnFormData,
   getNumberOfSelectedItems,
@@ -138,6 +138,7 @@ describe('TableColumnSchemaFormReducer', () => {
       name: '',
       isOriginallyDefaultColumn: false,
       columnType: ColumnTypeEnum.STRING,
+      maximumSize: 50,
       isSelected: false,
     })
 
@@ -327,8 +328,8 @@ describe('TableColumnSchemaFormReducer', () => {
     expect(newState[0]).not.toBe(initialValue)
     expect(newState[0].name).toEqual(initialValue.name)
     expect(newState[0].columnType).toEqual(ColumnTypeEnum.INTEGER)
-    // enumValues should not have changed
-    expect(newState[0].enumValues).toEqual(['1', '2', '3'])
+    // enumValues should have been removed
+    expect(newState[0].enumValues).toBeUndefined()
   })
   test('changeColumnModelType - canHaveRestrictedValues becomes false', () => {
     // STRING -> BOOLEAN

@@ -34,9 +34,18 @@ const routes: GenericRoute[] = [
     exact: true,
     synapseConfigArray: [
       {
-        name: 'Goals',
-        title: "What's in the Portal",
+        title: 'About the Portal',
         centerTitle: true,
+        outsideContainerClassName: 'home-spacer',
+        name: 'Markdown',
+        props: {
+          ownerId: 'syn27229419',
+          wikiId: '626030',
+          loadingSkeletonRowCount: 10,
+        },
+      },
+      {
+        name: 'Goals',
         outsideContainerClassName: 'home-spacer',
         props: {
           entityId: 'syn51449135',
@@ -129,7 +138,7 @@ const routes: GenericRoute[] = [
         title: 'Related Resources',
         centerTitle: true,
         subtitle: '',
-        outsideContainerClassName: 'home-spacer',
+        outsideContainerClassName: 'home-spacer home-bg-dark',
         props: {
           config: [
             {
@@ -153,7 +162,7 @@ const routes: GenericRoute[] = [
       {
         name: 'UserCardListRotate',
         title: 'Our People & Institutions',
-        outsideContainerClassName: 'home-spacer home-bg-dark',
+        outsideContainerClassName: 'home-spacer',
         centerTitle: true,
         props: {
           sql: `${peopleSql} WHERE isFeatured=true ORDER BY firstName`,
@@ -188,8 +197,12 @@ const routes: GenericRoute[] = [
     routes: [
       {
         exact: true,
+        path: 'Data by Files',
+        hideRouteFromNavbar: false,
+      },
+      {
+        exact: true,
         path: 'Data by Participants',
-        hideRouteFromNavbar: true, // remove on release of the cohort builder
         synapseConfigArray: [
           {
             name: 'OrientationBanner',
@@ -229,17 +242,6 @@ const routes: GenericRoute[] = [
           },
         ],
       },
-      {
-        exact: true,
-        path: 'Data by Files',
-        hideRouteFromNavbar: false,
-      },
-      {
-        exact: true,
-        path: 'Data by Files v2',
-        hideRouteFromNavbar: true, // this replaces Data by Files on release of the cohort builder
-      },
-
       {
         path: 'Projects',
         routes: [
@@ -295,11 +297,11 @@ const routes: GenericRoute[] = [
   },
   {
     exact: true,
-    path: 'Limited Data Commons',
+    path: 'Analysis Platforms',
     synapseConfigArray: [
       {
         name: 'Markdown',
-        title: 'Limited Data Commons',
+        title: 'Analysis Platforms',
         props: {
           ownerId: 'syn27229419',
           wikiId: '621275',

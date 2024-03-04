@@ -172,7 +172,7 @@ export const toolDetailsPageConfig: DetailsPageProps = {
           title: 'Development Publication',
           props: {
             ...publicationsV2CardConfiguration,
-            limit: 3,
+            initialLimit: 3,
             columnAliases,
             sql: developmentPublicationSql,
             secondaryLabelLimit: 4,
@@ -221,7 +221,7 @@ export const toolDetailsPageConfig: DetailsPageProps = {
           title: 'Publications',
           props: {
             ...publicationsV2CardConfiguration,
-            limit: 3,
+            initialLimit: 3,
             columnAliases,
             sql: publicationsV2Sql,
           },
@@ -244,18 +244,12 @@ export const toolDetailsPageConfig: DetailsPageProps = {
       uriValue: 'Observations',
       synapseConfigArray: [
         {
-          title: 'Natural History Observations',
-          name: 'Markdown',
-          standalone: true,
-          props: {
-            markdown:
-              'To view the observations, click on a mark on the timeline.',
-          },
-        },
-        {
           name: 'TimelinePlot',
           outsideContainerClassName: 'home-spacer',
           props: {
+            title: 'Natural History Observations',
+            subTitle:
+              'To view the observations, click on a mark on the timeline.',
             sql: observationsSql,
             sqlOperator: ColumnSingleValueFilterOperator.EQUAL,
           },
@@ -278,7 +272,7 @@ export const toolDetailsPageConfig: DetailsPageProps = {
           props: {
             sql: `${observationsSql} WHERE observationTime IS NULL`,
             type: SynapseConstants.OBSERVATION_CARD,
-            limit: 3,
+            initialLimit: 3,
           },
           title: 'Community Observations',
           tableSqlKeys: ['resourceId'],

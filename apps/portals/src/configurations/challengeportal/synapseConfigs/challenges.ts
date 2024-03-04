@@ -16,7 +16,7 @@ export const challengesSchema: GenericCardSchema = {
   title: 'name',
   subTitle: 'Status',
   description: 'Abstract',
-  secondaryLabels: ['Difficulty', 'ChallengeType', 'DataType', 'Tags'],
+  secondaryLabels: ['ChallengeType', 'DataType', 'Tags'],
 }
 export const challengeTitleLinkConfig: CardLink = {
   isMarkdown: false,
@@ -56,20 +56,14 @@ const taskTabConfigs = (taskID: string) => {
     },
     {
       name: 'Markdown',
-      columnName: `${taskID}.Motivation`,
-      title: 'Motivation',
-      props: {},
-    },
-    {
-      name: 'Markdown',
       columnName: `${taskID}.DataWiki`,
       title: 'Data',
       props: {},
     },
     {
-      name: 'ChallengeDataDownload',
+      name: 'ChallengeDataDownloadWrapper',
       columnName: `${taskID}.DataFolder`,
-      title: 'Training Data',
+      title: 'Data Files',
       props: {
         parentContainerId: '', // filled in dynamically by DetailsPage using value from `${taskID}.DataFolder`
       },
@@ -150,8 +144,8 @@ export const challengeDetailsPageConfig: DetailsPageProps = {
           props: {},
         },
         {
-          name: 'CardContainerLogic',
           title: 'Organizers',
+          name: 'CardContainerLogic',
           columnName: 'Organizers',
           overrideSqlSourceTable: true, // Instead, modify the sql (SELECT * FROM <column value>)
           props: {
@@ -161,8 +155,14 @@ export const challengeDetailsPageConfig: DetailsPageProps = {
           },
         },
         {
-          name: 'CardContainerLogic',
+          name: 'Markdown',
+          columnName: 'OrganizersDescription',
+          injectMarkdown: true,
+          props: {},
+        },
+        {
           title: 'Contributors',
+          name: 'CardContainerLogic',
           columnName: 'Contributors',
           overrideSqlSourceTable: true,
           props: {
@@ -172,9 +172,26 @@ export const challengeDetailsPageConfig: DetailsPageProps = {
           },
         },
         {
+          name: 'Markdown',
+          columnName: 'ContributorsDescription',
+          injectMarkdown: true,
+          props: {},
+        },
+        {
           name: 'CardContainerLogic',
           title: 'Sponsors',
           columnName: 'Sponsors',
+          overrideSqlSourceTable: true,
+          props: {
+            sql: '',
+            limit: 6,
+            type: SynapseConstants.MEDIUM_USER_CARD,
+          },
+        },
+        {
+          name: 'CardContainerLogic',
+          title: 'Support',
+          columnName: 'Support',
           overrideSqlSourceTable: true,
           props: {
             sql: '',
@@ -216,6 +233,12 @@ export const challengeDetailsPageConfig: DetailsPageProps = {
           name: 'Markdown',
           columnName: 'ConductRules',
           title: 'Conduct Rules',
+          props: {},
+        },
+        {
+          name: 'Markdown',
+          columnName: 'DataConditionsForUse',
+          title: 'Data Conditions For Use',
           props: {},
         },
       ],

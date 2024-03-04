@@ -44,24 +44,26 @@ export default function ImposeRestrictionDialog(
     boolean | undefined
   >(undefined)
 
-  const { mutate: createLockedAccessRequirement, isLoading } =
-    useCreateLockAccessRequirement({
-      onSuccess: () => {
-        displayToast('Successfully imposed restriction', 'success')
-        // PORTALS-2664: Send the user to the the ACT Service Desk
-        // so they can tell ACT more information about what kind of
-        // Conditions For Use (or Data Access Restriction) should be
-        // added.
-        window.open(
-          'https://sagebionetworks.jira.com/servicedesk/customer/portal/8/group/15/create/134',
-          '_blank',
-        )
-        onClose()
-      },
-      onError: e => {
-        displayToast(`Failed to impose restriction: ${e.reason}`, 'danger')
-      },
-    })
+  const {
+    mutate: createLockedAccessRequirement,
+    isPending: createLockedARIsPending,
+  } = useCreateLockAccessRequirement({
+    onSuccess: () => {
+      displayToast('Successfully imposed restriction', 'success')
+      // PORTALS-2664: Send the user to the the ACT Service Desk
+      // so they can tell ACT more information about what kind of
+      // Conditions For Use (or Data Access Restriction) should be
+      // added.
+      window.open(
+        'https://sagebionetworks.jira.com/servicedesk/customer/portal/8/group/15/create/134',
+        '_blank',
+      )
+      onClose()
+    },
+    onError: e => {
+      displayToast(`Failed to impose restriction: ${e.reason}`, 'danger')
+    },
+  })
 
   function okClickedHandler() {
     if (isSensitiveHumanData) {
@@ -100,7 +102,6 @@ export default function ImposeRestrictionDialog(
             Is this sensitive human data that must be protected?
           </FormLabel>
           <RadioGroup<boolean>
-            id={`impose-restriction-${entityId}`}
             value={isSensitiveHumanData}
             options={[
               {
@@ -124,11 +125,15 @@ export default function ImposeRestrictionDialog(
         </FormControl>
       </DialogContent>
       <DialogActions>
-        <Button variant="outlined" disabled={isLoading} onClick={onClose}>
+        <Button
+          variant="outlined"
+          disabled={createLockedARIsPending}
+          onClick={onClose}
+        >
           Cancel
         </Button>
         <Button
-          disabled={isSensitiveHumanData == null || isLoading}
+          disabled={isSensitiveHumanData == null || createLockedARIsPending}
           variant="contained"
           onClick={okClickedHandler}
         >

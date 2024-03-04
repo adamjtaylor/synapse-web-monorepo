@@ -1,80 +1,56 @@
-import React, { useEffect, useState } from 'react'
-import StepperDialog, { Step } from '../StepperDialog/StepperDialog'
-
+import React, { useCallback, useMemo, useRef, useState } from 'react'
 import {
-  ErrorResponse,
-  Team,
-  TeamMembershipStatus,
-} from '@sage-bionetworks/synapse-types'
-import { CreateChallengeTeam, CreateTeamRequest } from './CreateChallengeTeam'
+  CreateChallengeTeam,
+  CreateChallengeTeamHandle,
+} from './CreateChallengeTeam'
 import { SelectChallengeTeam } from './SelectChallengeTeam'
 import { RegistrationSuccessful } from './RegistrationSuccessful'
-import { JoinRequestForm } from './JoinRequestForm'
+import {
+  MembershipRequestForm,
+  MembershipRequestFormHandle,
+} from './MembershipRequestForm'
 import { useSynapseContext } from '../../utils'
 import {
-  addTeamMemberAsAuthenticatedUserOrAdmin,
-  createMembershipInvitation,
-  createMembershipRequest,
-  createTeam,
-  registerChallengeTeam,
-} from '../../synapse-client'
-import {
+  useAddMemberToTeam,
   useGetCurrentUserProfile,
   useGetEntityChallenge,
-  useGetUserSubmissionTeamsInfinite,
+  useGetMembershipStatus,
+  useGetUserSubmissionTeams,
 } from '../../synapse-queries'
-import { ANONYMOUS_PRINCIPAL_ID } from '../../utils/SynapseConstants'
-import { useGetMembershipStatus } from '../../synapse-queries/team/useTeamMembers'
-import { SynapseClientError } from '../../utils/SynapseClientError'
+import { Alert, Box, Button, Tooltip, Typography } from '@mui/material'
+import { SignInPrompt, SynapseErrorBoundary } from '../error/ErrorBanner'
+import { noop } from 'lodash-es'
+import { DialogBase } from '../DialogBase'
+import { SynapseSpinner } from '../LoadingScreen/LoadingScreen'
+import {
+  AcceptMembershipInvitationButton,
+  OpenMembershipInvitation,
+} from './OpenMembershipInvitation'
 
-import { Typography } from '@mui/material'
-import { useQueryClient } from 'react-query'
-
-enum StepsEnum {
+enum ChallengeTeamWizardStep {
   SELECT_YOUR_CHALLENGE_TEAM = 'SELECT_YOUR_CHALLENGE_TEAM',
+  ACCEPT_INVITATION = 'ACCEPT_INVITATION',
   JOIN_REQUEST_FORM = 'JOIN_REQUEST_FORM',
   JOIN_REQUEST_SENT = 'JOIN_REQUEST_SENT',
   CREATE_NEW_TEAM = 'CREATE_NEW_TEAM',
   REGISTRATION_SUCCESSFUL = 'REGISTRATION_SUCCESSFUL',
 }
-type StepKey = keyof typeof StepsEnum
-type StepList = {
-  [key in StepKey]: Step
-}
 
-const steps: StepList = {
-  SELECT_YOUR_CHALLENGE_TEAM: {
-    id: StepsEnum.SELECT_YOUR_CHALLENGE_TEAM,
-    title: 'Select Your Challenge Team',
-    nextStep: StepsEnum.JOIN_REQUEST_FORM,
-    nextEnabled: false,
-  },
-  JOIN_REQUEST_FORM: {
-    id: StepsEnum.JOIN_REQUEST_FORM,
-    title: 'Request Team Membership',
-    previousStep: StepsEnum.SELECT_YOUR_CHALLENGE_TEAM,
-    confirmStep: StepsEnum.JOIN_REQUEST_SENT,
-    confirmButtonText: 'Send Request',
-    confirmEnabled: true,
-  },
-  JOIN_REQUEST_SENT: {
-    id: StepsEnum.JOIN_REQUEST_SENT,
-    title: 'Request Sent',
-    confirmButtonText: 'Close',
-    confirmEnabled: true,
-  },
-  CREATE_NEW_TEAM: {
-    id: StepsEnum.CREATE_NEW_TEAM,
-    title: 'Create Team',
-    confirmStep: StepsEnum.REGISTRATION_SUCCESSFUL,
-    confirmButtonText: 'Finish Registration',
-    confirmEnabled: false,
-    previousStep: StepsEnum.SELECT_YOUR_CHALLENGE_TEAM,
-  },
-  REGISTRATION_SUCCESSFUL: {
-    id: StepsEnum.REGISTRATION_SUCCESSFUL,
-    title: 'Registration Successful!',
-  },
+function getStepDialogTitle(step: ChallengeTeamWizardStep) {
+  switch (step) {
+    case ChallengeTeamWizardStep.SELECT_YOUR_CHALLENGE_TEAM:
+      return 'Select Your Challenge Team'
+    case ChallengeTeamWizardStep.ACCEPT_INVITATION:
+      return 'Invitation to Join Team'
+    case ChallengeTeamWizardStep.JOIN_REQUEST_FORM:
+      return 'Request Team Membership'
+    case ChallengeTeamWizardStep.JOIN_REQUEST_SENT:
+      return 'Request Sent'
+    case ChallengeTeamWizardStep.CREATE_NEW_TEAM:
+      return 'Create Team'
+    case ChallengeTeamWizardStep.REGISTRATION_SUCCESSFUL:
+      return 'Registration Successful!'
+  }
 }
 
 export type ChallengeTeamWizardProps = {
@@ -83,488 +59,368 @@ export type ChallengeTeamWizardProps = {
   onClose: () => void
 }
 
-const EMPTY_ID = ''
+/**
+ * The ChallengeTeamWizard is used to guide a user through the process of joining or creating a team for a challenge.
+ *
+ * A required precondition is that the user is NOT on any registered submission team for the challenge.
+ */
+function ChallengeTeamWizard(props: ChallengeTeamWizardProps) {
+  const { projectId, isShowingModal = false, onClose } = props
+  const { accessToken } = useSynapseContext()
+  const isLoggedIn = Boolean(accessToken)
 
-const ChallengeTeamWizard: React.FunctionComponent<
-  ChallengeTeamWizardProps
-> = ({ projectId, isShowingModal = false, onClose }) => {
-  const { accessToken, keyFactory } = useSynapseContext()
-  const [loading, setLoading] = useState<boolean>(true)
-  const [step, setStep] = useState<Step>(steps.SELECT_YOUR_CHALLENGE_TEAM)
-  const [errorMessage, setErrorMessage] = useState<string>()
-  const [selectedTeam, setSelectedTeam] = useState<Team | undefined>()
-  const [createdNewTeam, setCreatedNewTeam] = useState<boolean>(false)
-  const [confirming, setConfirming] = useState<boolean>(false)
-  const [hasSubmissionTeam, setHasSubmissionTeam] = useState<boolean>(false)
-  const queryClient = useQueryClient()
-  // membershipStatus is {teamId:TeamMembershipStatus}
-  const [membershipStatus, setMembershipStatus] = useState<
-    Record<string, TeamMembershipStatus>
-  >({})
-  const [inviteMembersSuccess, setInviteMembersSuccess] =
-    useState<boolean>(false)
-  const [registerChallengeSuccess, setRegisterChallengeSuccess] =
-    useState<boolean>(false)
-  const [newTeam, setNewTeam] = useState<CreateTeamRequest>({
-    name: '',
-    description: '',
-    message: '',
-    invitees: '',
-  })
-  const [joinMessage, setJoinMessage] = useState<string>('')
+  const [step, setStep] = useState<ChallengeTeamWizardStep>(
+    ChallengeTeamWizardStep.SELECT_YOUR_CHALLENGE_TEAM,
+  )
+  const [selectedTeamId, setSelectedTeamId] = useState<string | undefined>()
 
-  /************************
-   * Data population hooks
-   ***********************/
+  // Tracks if the form to create a new team is valid, so the wizard can control the `disabled` status of the confirm button
+  const [canCreateNewTeam, setCanCreateNewTeam] = useState(false)
+  // true if the user has created a new team to register for the challenge
+  const [hasCreatedNewTeam, setHasCreatedNewTeam] = useState<boolean>(false)
 
-  // Use the existing accessToken if present to get the current user's profile / userId
-  const { data: userProfile } = useGetCurrentUserProfile()
+  const membershipRequestFormRef = useRef<MembershipRequestFormHandle>(null)
+  const createTeamRef = useRef<CreateChallengeTeamHandle>(null)
+
+  const { data: userProfile, isLoading: isLoadingUserProfile } =
+    useGetCurrentUserProfile({
+      enabled: isLoggedIn,
+    })
+
   // Retrieve the challenge associated with the projectId passed through props
-  const { data: challenge } = useGetEntityChallenge(projectId)
-  const participantTeamId: string = challenge
-    ? challenge.participantTeamId
-    : EMPTY_ID
-  const userId = userProfile ? userProfile.ownerId : EMPTY_ID
+  const { data: challenge, isLoading: isLoadingChallenge } =
+    useGetEntityChallenge(projectId)
 
-  // Verify that user is a member of the participant team
-  const { data: challengeTeamMembershipStatus } = useGetMembershipStatus(
-    participantTeamId,
-    userId,
-  )
-  useEffect(() => {
-    if (
-      challengeTeamMembershipStatus &&
-      !challengeTeamMembershipStatus?.isMember &&
-      accessToken
-    ) {
-      addTeamMemberAsAuthenticatedUserOrAdmin(
-        participantTeamId,
-        userId,
-        accessToken,
-      )
-        .then(() => {
-          queryClient.invalidateQueries(
-            keyFactory.getMembershipStatusQueryKey(participantTeamId, userId),
-          )
-          queryClient.invalidateQueries(
-            keyFactory.getIsUserMemberOfTeamQueryKey(participantTeamId, userId),
-          )
-        })
-        .catch(error => {
-          setErrorMessage(error.reason)
-        })
-    }
-  }, [
-    accessToken,
-    participantTeamId,
-    userId,
-    challengeTeamMembershipStatus,
-    queryClient,
-    keyFactory,
-  ])
+  const {
+    mutateAsync: addTeamMember,
+    isPending: addMemberToTeamIsPending,
+    error: addUserToTeamError,
+  } = useAddMemberToTeam()
 
-  // Determine whether or not the given user belongs to any submission teams
+  // Determine whether the given user belongs to any submission teams
   const { data: userSubmissionTeams, error: userSubmissionTeamError } =
-    useGetUserSubmissionTeamsInfinite(challenge?.id ?? EMPTY_ID, 1)
-  useEffect(() => {
-    if (userSubmissionTeams) {
-      const isReg = userSubmissionTeams.results.length > 0
-      if (isReg) {
-        setErrorMessage(
-          'Error: You are already a member of a registered submission team for this Challenge.',
-        )
-        setHasSubmissionTeam(isReg)
-      }
-      setLoading(false)
-    }
-    if (userSubmissionTeamError) {
-      setErrorMessage(
-        `Error: Could not determine if you are already registered for this Challenge.`,
-      )
-      setLoading(false)
-    }
-  }, [userSubmissionTeams, userSubmissionTeamError])
+    useGetUserSubmissionTeams(challenge?.id!, 1, 0, {
+      enabled: Boolean(isLoggedIn && challenge),
+    })
 
-  useGetMembershipStatus(
-    selectedTeam?.id ?? EMPTY_ID,
-    userProfile?.ownerId ?? EMPTY_ID,
-    {
-      enabled: !!selectedTeam && !!userProfile,
-      onSettled: (
-        data: TeamMembershipStatus | undefined,
-        error: SynapseClientError | null,
-      ) => {
-        // console.log('useGetMembershipStatus', data, error)
-        if (data) {
-          setMembershipStatus({ ...membershipStatus, [data.teamId]: data })
-        }
-        if (error) {
-          setErrorMessage(error.reason)
-        }
-      },
-    },
-  )
+  const isMemberOfSubmissionTeam =
+    userSubmissionTeams && userSubmissionTeams.results.length > 0
 
-  /*************************
-   * React to state changes
-   ************************/
+  const {
+    data: selectedTeamMembershipStatus,
+    isLoading: selectedTeamMembershipStatusIsLoading,
+    error: selectedTeamMembershipStatusError,
+  } = useGetMembershipStatus(selectedTeamId!, String(userProfile?.ownerId), {
+    enabled: isLoggedIn && !!selectedTeamId && !!userProfile,
+  })
 
-  const canUserJoinTeam = () => {
-    if (selectedTeam && selectedTeam.id in membershipStatus) {
-      const {
-        canJoin,
-        membershipApprovalRequired,
-        isMember,
-        hasOpenInvitation,
-        hasOpenRequest,
-      } = membershipStatus[selectedTeam.id]
+  const addUserToTeam = useCallback(async () => {
+    if (!selectedTeamId || !userProfile) return
+    await addTeamMember({
+      teamId: selectedTeamId,
+      userId: userProfile.ownerId,
+    })
+    setStep(ChallengeTeamWizardStep.REGISTRATION_SUCCESSFUL)
+  }, [addTeamMember, setStep, selectedTeamId, userProfile])
 
-      if (isMember) {
-        // User cannot join this team, disable Next button
-        return {
-          canJoin: false,
-          errorMessage: 'You are already a member of this team.',
-        }
-      }
-
-      if (hasOpenRequest) {
-        // User already has an open request to join this team, disable Next button to avoid request spamming
-        return {
-          canJoin: false,
-          errorMessage:
-            'Your previous request to join this team is pending review.',
-        }
-      }
-
-      if (hasOpenInvitation || canJoin || membershipApprovalRequired) {
-        /**
-         * User has an open invitation, or the team is public, or
-         * user may request to join. Enable Next button.
-         */
-        return {
-          canJoin: true,
-          needsApproval: membershipApprovalRequired,
-          errorMessage: undefined,
-        }
-      }
-    }
-    return {
-      canJoin: false,
-    }
-  }
-
-  // Determine the login status of the user, and whether or not we can request the given projectId challenge.
-  useEffect(() => {
-    /**
-     * A user is not necessarily logged out just because they are not logged in...
-     * for example, the request for their userProfile may be pending.
-     */
-    const isLoggedOut =
-      !!userProfile && userProfile.ownerId === ANONYMOUS_PRINCIPAL_ID.toString()
-
-    if (isLoggedOut) {
-      setLoading(false)
-      setErrorMessage('Please login to continue.')
-    }
-  }, [accessToken, userProfile, projectId, challenge])
-
-  /**
-   * When creating a new team, wait for the team to be registered to the challenge
-   * and for invited members to be invited before proceeding to confirmation view.
-   */
-  useEffect(() => {
-    if (inviteMembersSuccess && registerChallengeSuccess) {
-      setConfirming(false)
-      handleStepChange(step.confirmStep as StepsEnum)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registerChallengeSuccess, inviteMembersSuccess, step])
-
-  // Determine the user's eligibility to join the selected team
-  useEffect(() => {
-    if (
-      selectedTeam &&
-      selectedTeam.id in membershipStatus &&
-      step.id === StepsEnum.SELECT_YOUR_CHALLENGE_TEAM
-    ) {
-      const { canJoin, errorMessage } = canUserJoinTeam()
-      if (canJoin) {
-        if (!step.nextEnabled) setStep({ ...step, nextEnabled: true })
-        return
-      }
-      if (step.nextEnabled) setStep({ ...step, nextEnabled: false })
-      if (errorMessage) setErrorMessage(errorMessage)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [membershipStatus, selectedTeam, step])
-
-  /************************
-   * Form update handlers
-   * *********************/
-
-  // SELECT_YOUR_CHALLENGE_TEAM: user has selected an existing challenge team from the table
-  const handleSelectTeam = (team: Team) => {
-    if (team) {
-      // Setting selectedTeam will trigger the useMembershipStatus hook
-      setErrorMessage(undefined)
-      setSelectedTeam(team)
-    }
-  }
-
-  // CREATE_NEW_TEAM: form change handler
-  const handleChangeTeamInfo = (updatedTeam: CreateTeamRequest) => {
-    setNewTeam(updatedTeam)
-    const confirmEnabled = updatedTeam.name.length > 1
-    setStep({ ...step, confirmEnabled })
-  }
-
-  /************************
-   * Step confirm handlers
-   * *********************/
-
-  // JOIN_REQUEST_FORM: Add user to an existing public team or a team the user has an open invitation to
-  const addUserToTeam = (teamId = selectedTeam?.id) => {
-    if (!teamId || !userProfile || !accessToken) return
-    setConfirming(true)
-    setErrorMessage(undefined)
-    addTeamMemberAsAuthenticatedUserOrAdmin(
-      teamId,
-      userProfile.ownerId,
-      accessToken,
-    )
-      .then(() => {
-        // invalidate submissions team membership status to update the ChallengeRegisterButton
-        if (challenge) {
-          queryClient.invalidateQueries(
-            keyFactory.getSubmissionTeamsQueryKey(challenge?.id),
-          )
-        }
-        handleStepChange(StepsEnum.REGISTRATION_SUCCESSFUL)
-      })
-      .catch((err: ErrorResponse) => {
-        setErrorMessage(`Error joining team: ${err.reason}`)
-      })
-      .finally(() => {
-        setConfirming(false)
-      })
-  }
-
-  // JOIN_REQUEST_FORM: User is requesting to join an existing non-public challenge team
-  const handleRequestMembership = async () => {
-    if (userProfile && selectedTeam) {
-      setConfirming(true)
-      setStep({ ...step, nextEnabled: false })
-      setErrorMessage(undefined)
-      await createMembershipRequest(
-        selectedTeam.id,
-        userProfile.ownerId,
-        joinMessage,
-        undefined,
-        accessToken,
-      )
-        .then(() => {
-          // console.log({ response })
-          // request successful, advance to next step
-          setStep(steps[StepsEnum.JOIN_REQUEST_SENT])
-        })
-        .catch((err: ErrorResponse) => {
-          console.error({ err })
-          setErrorMessage(`Error requesting membership: ${err.reason}`)
-        })
-        .finally(() => {
-          setConfirming(false)
-        })
-    }
-  }
-
-  // CREATE_NEW_TEAM: Add newly created team to the challenge
-  const handleRegisterChallengeTeam = async (teamId: string | number) => {
-    const msg = 'Error registering challenge team'
-    // console.log({ teamId, challenge })
-    if (teamId && challenge) {
-      setErrorMessage(undefined)
-      setRegisterChallengeSuccess(false)
-      await registerChallengeTeam(accessToken, challenge.id, teamId)
-        .then(() => {
-          setRegisterChallengeSuccess(true)
-        })
-        .catch((err: ErrorResponse) => {
-          setErrorMessage(`${msg}: ${err.reason}`)
-          setConfirming(false)
-        })
-    } else {
-      setErrorMessage(`${msg}: Invalid team.`)
-      setConfirming(false)
-    }
-  }
-
-  // CREATE_NEW_TEAM: Invite a comma-delimited list of emails to join the team
-  const handleInviteTeamMembers = async (
-    teamId: string | number,
-    invitees: string,
-  ) => {
-    if (!invitees.length) {
-      setInviteMembersSuccess(true)
-      return
-    }
-    const msg = 'Error inviting members'
-    if (teamId) {
-      setErrorMessage(undefined)
-      setInviteMembersSuccess(false)
-      const emails = invitees.split(',')
-      const errors: string[] = []
-      for (const inviteeEmail of emails) {
-        await createMembershipInvitation(
-          accessToken,
-          teamId,
-          inviteeEmail.trim(),
-        ).catch(() => {
-          errors.push(inviteeEmail.trim())
-        })
-      }
-
-      if (errors.length) {
-        setErrorMessage(`${msg}: ${errors.join(', ')}`)
-        setConfirming(false)
-      } else {
-        setInviteMembersSuccess(true)
-      }
-    } else {
-      setErrorMessage(`${msg}: Invalid team.`)
-      setConfirming(false)
-    }
-  }
-
-  // CREATE_NEW_TEAM: Create a new team to join the challenge
-  const handleCreateTeam = async () => {
-    if (newTeam && newTeam.name && newTeam.name.length > 1) {
-      setStep({ ...step, confirmEnabled: false })
-      setConfirming(true)
-      setErrorMessage(undefined)
-      await createTeam(accessToken, newTeam.name, newTeam.description)
-        .then(response => {
-          setCreatedNewTeam(true)
-          setSelectedTeam(response)
-          // Add newly created team to challenge
-          handleRegisterChallengeTeam(response.id)
-          // Invite emails to new team
-          handleInviteTeamMembers(response.id, newTeam.invitees)
-        })
-        .catch((err: ErrorResponse) => {
-          setConfirming(false)
-          setErrorMessage(`Error creating team: ${err.reason}`)
-          setStep({ ...step, confirmEnabled: true })
-        })
-    }
-  }
-
-  const hide = () => {
-    setErrorMessage(undefined)
-    setCreatedNewTeam(false)
-    setSelectedTeam(undefined)
-    setStep({ ...step, nextEnabled: false })
+  const hide = useCallback(() => {
+    setHasCreatedNewTeam(false)
+    setSelectedTeamId(undefined)
     onClose()
-  }
+  }, [onClose])
 
-  const onConfirmHandlerMap: Record<
-    string,
-    (() => Promise<void>) | (() => undefined)
-  > | void = {
-    CREATE_NEW_TEAM: handleCreateTeam,
-    JOIN_REQUEST_FORM: handleRequestMembership,
-    JOIN_REQUEST_SENT: () => {
-      hide()
-      return undefined
-    },
-  }
+  const isLoading = isLoadingUserProfile || isLoadingChallenge
+
+  const backButton = useMemo(() => {
+    switch (step) {
+      case ChallengeTeamWizardStep.SELECT_YOUR_CHALLENGE_TEAM:
+      case ChallengeTeamWizardStep.JOIN_REQUEST_SENT:
+      case ChallengeTeamWizardStep.REGISTRATION_SUCCESSFUL:
+        // Cannot go back from these steps
+        return <></>
+      case ChallengeTeamWizardStep.ACCEPT_INVITATION:
+      case ChallengeTeamWizardStep.JOIN_REQUEST_FORM:
+      case ChallengeTeamWizardStep.CREATE_NEW_TEAM:
+      default:
+        // All the other steps go back to team selection
+        return (
+          <Button
+            variant={'outlined'}
+            onClick={() => {
+              setStep(ChallengeTeamWizardStep.SELECT_YOUR_CHALLENGE_TEAM)
+              setSelectedTeamId(undefined)
+            }}
+          >
+            Back
+          </Button>
+        )
+    }
+  }, [step])
+
+  const closeButton = useMemo(() => {
+    return (
+      <Button
+        variant={'contained'}
+        onClick={() => {
+          onClose()
+        }}
+      >
+        Close
+      </Button>
+    )
+  }, [onClose])
 
   // Determine modal content based on step.id
-  const createContent = () => {
-    switch (step.id) {
-      case StepsEnum.SELECT_YOUR_CHALLENGE_TEAM:
-        return accessToken && challenge && !hasSubmissionTeam ? (
-          <SelectChallengeTeam
-            challengeId={challenge.id}
-            onCreateTeam={() => handleStepChange(StepsEnum.CREATE_NEW_TEAM)}
-            onSelectTeam={handleSelectTeam}
-          />
-        ) : (
-          <></>
-        )
-      case StepsEnum.JOIN_REQUEST_FORM:
-        return (
-          <JoinRequestForm
-            team={selectedTeam}
-            joinMessageChange={setJoinMessage}
-          />
-        )
-
-      case StepsEnum.JOIN_REQUEST_SENT:
-        return (
-          <Typography variant="body1" sx={{ lineHeight: '20px' }}>
-            Team Manager(s) have received your request. Check your Synapse email
-            address for status of your request.
-          </Typography>
-        )
-      case StepsEnum.REGISTRATION_SUCCESSFUL:
-        return (
-          <RegistrationSuccessful
-            createdNewTeam={createdNewTeam}
-            teamName={selectedTeam?.name}
-          />
-        )
-      case StepsEnum.CREATE_NEW_TEAM:
-        return (
-          <CreateChallengeTeam
-            onChangeTeamInfo={handleChangeTeamInfo}
-            onError={setErrorMessage}
-          />
-        )
-      default:
-        return <></>
+  const { actions = <></>, content = <></> } = useMemo(() => {
+    if (!isLoggedIn) {
+      return {
+        content: (
+          <Alert severity={'error'}>
+            <SignInPrompt />
+          </Alert>
+        ),
+      }
     }
-  }
 
-  // React to change in step
-  function handleStepChange(value?: StepsEnum) {
-    if (!value || !steps[value]) return
-    setErrorMessage(undefined)
+    if (isMemberOfSubmissionTeam) {
+      return {
+        content: (
+          <Alert severity={'error'}>
+            <Typography>
+              You are already a member of a registered submission team for this
+              Challenge.
+            </Typography>
+          </Alert>
+        ),
+      }
+    }
 
-    const { canJoin, errorMessage, needsApproval } = canUserJoinTeam()
-    // console.log('handleStepChange', value)
-    switch (value) {
-      case StepsEnum.SELECT_YOUR_CHALLENGE_TEAM:
-        setCreatedNewTeam(false)
-        break
-      case StepsEnum.JOIN_REQUEST_FORM:
-        // If the team is public, or the user has an open invitation, add them to the team immediately
-        if (canJoin) {
-          if (!needsApproval) {
-            return addUserToTeam()
+    switch (step) {
+      case ChallengeTeamWizardStep.SELECT_YOUR_CHALLENGE_TEAM: {
+        let buttonText = 'Join Team'
+        let disableJoiningSelectedTeam = false
+        let buttonOnClickBehavior: () => void = noop
+        let buttonTooltip = ''
+        if (
+          selectedTeamMembershipStatus &&
+          selectedTeamMembershipStatus.hasOpenInvitation
+        ) {
+          // The user has been invited to join the selected team
+          buttonText = 'View Invitation to Join Team'
+          buttonOnClickBehavior = () => {
+            setStep(ChallengeTeamWizardStep.ACCEPT_INVITATION)
           }
-        } else {
-          return setErrorMessage(errorMessage)
+        } else if (
+          selectedTeamMembershipStatus &&
+          selectedTeamMembershipStatus.hasOpenRequest
+        ) {
+          // User already has an open request to join the selected team, disable button to avoid request spamming
+          buttonText = 'Join Request Pending'
+          disableJoiningSelectedTeam = true
+          buttonTooltip =
+            'You have already submitted a request to join this team.'
+        } else if (
+          selectedTeamMembershipStatus &&
+          selectedTeamMembershipStatus.membershipApprovalRequired
+        ) {
+          // The user has to send a request to join the selected team
+          buttonText = 'Request to Join Team'
+          buttonOnClickBehavior = () => {
+            setStep(ChallengeTeamWizardStep.JOIN_REQUEST_FORM)
+          }
+        } else if (
+          selectedTeamMembershipStatus &&
+          selectedTeamMembershipStatus.canJoin
+        ) {
+          // The user can freely join the selected team
+          buttonText = 'Join Team'
+          buttonOnClickBehavior = () => {
+            void addUserToTeam()
+          }
         }
-        break
-    }
-    setStep(steps[value])
-  }
+        return {
+          content: challenge && !isMemberOfSubmissionTeam && (
+            <SelectChallengeTeam
+              challengeId={challenge.id}
+              onCreateTeam={() =>
+                setStep(ChallengeTeamWizardStep.CREATE_NEW_TEAM)
+              }
+              selectedTeamId={selectedTeamId}
+              onSelectTeam={teamId => setSelectedTeamId(teamId)}
+            />
+          ),
+          actions: (
+            <>
+              {backButton}
+              <Tooltip title={buttonTooltip}>
+                {/* Wrap button in span to show tooltip when button is disabled */}
+                <span>
+                  <Button
+                    onClick={buttonOnClickBehavior}
+                    startIcon={
+                      addMemberToTeamIsPending ? <SynapseSpinner /> : undefined
+                    }
+                    disabled={
+                      !selectedTeamId ||
+                      selectedTeamMembershipStatusIsLoading ||
+                      addMemberToTeamIsPending ||
+                      disableJoiningSelectedTeam
+                    }
+                    variant={'contained'}
+                  >
+                    {buttonText}
+                  </Button>
+                </span>
+              </Tooltip>
+            </>
+          ),
+        }
+      }
+      case ChallengeTeamWizardStep.ACCEPT_INVITATION:
+        return {
+          content: <OpenMembershipInvitation teamId={selectedTeamId!} />,
+          actions: (
+            <>
+              {backButton}
+              <AcceptMembershipInvitationButton
+                teamId={selectedTeamId!}
+                onSuccess={() => {
+                  setStep(ChallengeTeamWizardStep.REGISTRATION_SUCCESSFUL)
+                }}
+              />
+            </>
+          ),
+        }
+      case ChallengeTeamWizardStep.JOIN_REQUEST_FORM:
+        return {
+          content: (
+            <MembershipRequestForm
+              ref={membershipRequestFormRef}
+              teamId={selectedTeamId!}
+              onRequestSubmitted={() => {
+                setStep(ChallengeTeamWizardStep.JOIN_REQUEST_SENT)
+              }}
+            />
+          ),
+          actions: (
+            <>
+              {backButton}
+              <Button
+                variant={'contained'}
+                onClick={() => {
+                  membershipRequestFormRef?.current?.submit()
+                }}
+              >
+                Send Request
+              </Button>
+            </>
+          ),
+        }
 
-  const onConfirmHandler = onConfirmHandlerMap[step.id]
-    ? onConfirmHandlerMap[step.id]
-    : () => undefined
+      case ChallengeTeamWizardStep.JOIN_REQUEST_SENT:
+        return {
+          content: (
+            <Typography variant="body1" sx={{ lineHeight: '20px' }}>
+              Team Manager(s) have received your request. Check your Synapse
+              email address for status of your request.
+            </Typography>
+          ),
+          actions: (
+            <>
+              {backButton}
+              {closeButton}
+            </>
+          ),
+        }
+      case ChallengeTeamWizardStep.REGISTRATION_SUCCESSFUL:
+        return {
+          content: (
+            <RegistrationSuccessful
+              createdNewTeam={hasCreatedNewTeam}
+              teamId={selectedTeamId}
+            />
+          ),
+          actions: (
+            <>
+              {backButton}
+              {closeButton}
+            </>
+          ),
+        }
+      case ChallengeTeamWizardStep.CREATE_NEW_TEAM: {
+        return {
+          content: (
+            <CreateChallengeTeam
+              ref={createTeamRef}
+              challengeId={challenge?.id!}
+              onCanSubmitChange={canSubmit => setCanCreateNewTeam(canSubmit)}
+              onFinished={teamId => {
+                setHasCreatedNewTeam(true)
+                setSelectedTeamId(teamId)
+                setStep(ChallengeTeamWizardStep.REGISTRATION_SUCCESSFUL)
+              }}
+            />
+          ),
+          actions: (
+            <>
+              {backButton}
+              <Button
+                variant={'contained'}
+                disabled={!canCreateNewTeam}
+                onClick={() => {
+                  createTeamRef?.current?.submit()
+                }}
+              >
+                Create Team
+              </Button>
+            </>
+          ),
+        }
+      }
+    }
+  }, [
+    isLoggedIn,
+    isMemberOfSubmissionTeam,
+    step,
+    selectedTeamId,
+    backButton,
+    closeButton,
+    hasCreatedNewTeam,
+    selectedTeamMembershipStatus,
+    challenge,
+    addMemberToTeamIsPending,
+    selectedTeamMembershipStatusIsLoading,
+    addUserToTeam,
+    canCreateNewTeam,
+  ])
+
+  const errorMessage =
+    addUserToTeamError?.message ||
+    selectedTeamMembershipStatusError?.message ||
+    userSubmissionTeamError?.message
 
   return (
-    <StepperDialog
-      errorMessage={errorMessage}
+    <DialogBase
       onCancel={hide}
-      onStepChange={handleStepChange as (arg: string) => void}
       open={isShowingModal}
-      onConfirm={onConfirmHandler}
-      confirming={confirming}
-      step={step}
-      content={createContent()}
-      loading={loading}
+      actions={actions}
+      title={getStepDialogTitle(step)}
+      content={
+        <SynapseErrorBoundary>
+          <Box display="flex" flexDirection="column" gap={1}>
+            {isLoading ? (
+              <SynapseSpinner size={40} />
+            ) : (
+              <>
+                {content}
+                {errorMessage && (
+                  <Alert severity={'error'}>{errorMessage}</Alert>
+                )}
+              </>
+            )}
+          </Box>
+        </SynapseErrorBoundary>
+      }
     />
   )
 }

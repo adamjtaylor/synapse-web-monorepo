@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import { createWrapper } from '../../testutils/TestingLibraryUtils'
-import { SynapseClient } from '../../index'
+import SynapseClient from '../../synapse-client'
 import queryResultBundleJson from '../../mocks/query/syn51735464GroupBySpecies'
 import TimelinePlotSpeciesSelector, {
   TimelinePlotSpeciesSelectorProps,
@@ -52,12 +52,12 @@ describe('TimelinePlotSpeciesSelector tests', () => {
       .mockResolvedValueOnce(queryResultBundleJson)
 
     await renderTimelineSelector()
-    await waitFor(() =>
-      expect(SynapseClient.getFullQueryTableResults).toHaveBeenCalledTimes(1),
-    )
+    await waitFor(() => {
+      expect(SynapseClient.getFullQueryTableResults).toHaveBeenCalledTimes(1)
+      expect(setSpecies).toHaveBeenCalledWith('Mus musculus')
+    })
     // verify the first row has been selected by default
-    expect(setSpecies).toHaveBeenCalledWith('Mus musculus')
-    const dropdown = await screen.findByRole('button')
+    const dropdown = await screen.findByRole('combobox')
     await userEvent.click(dropdown)
     await userEvent.click(await screen.findByText('Saccharomyces'))
     expect(setSpecies).toHaveBeenCalledWith('Saccharomyces')
@@ -76,18 +76,5 @@ describe('TimelinePlotSpeciesSelector tests', () => {
     expect(setSpecies).toHaveBeenCalledWith('Mus musculus')
 
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
-  })
-
-  it('null is returned if no rows are returned', async () => {
-    jest
-      .spyOn(SynapseClient, 'getFullQueryTableResults')
-      .mockResolvedValueOnce(emptyQueryResultBundle)
-
-    await renderTimelineSelector()
-    await waitFor(() =>
-      expect(SynapseClient.getFullQueryTableResults).toHaveBeenCalledTimes(3),
-    )
-    // verify the first row has been selected by default
-    expect(setSpecies).toHaveBeenCalledWith(null)
   })
 })

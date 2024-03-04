@@ -1,4 +1,4 @@
-import { cloneDeep } from 'lodash-es'
+import { cloneDeep, uniqueId } from 'lodash-es'
 import { rest } from 'msw'
 import {
   TABLE_QUERY_ASYNC_GET,
@@ -19,13 +19,17 @@ import {
   BUNDLE_MASK_SUM_FILES_SIZE_BYTES,
 } from '../../../utils/SynapseConstants'
 import {
+  ColumnModel,
   QueryBundleRequest,
   QueryResultBundle,
+  TableUpdateTransactionRequest,
+  TableUpdateTransactionResponse,
   ViewColumnModelRequest,
   ViewColumnModelResponse,
 } from '@sage-bionetworks/synapse-types'
 import { generateAsyncJobHandlers } from './asyncJobHandlers'
 import defaultFileViewColumnModels from '../../query/defaultFileViewColumnModels'
+import { SynapseError } from '../../../utils/SynapseError'
 
 const BIT_TO_FIELD_MAP: Record<number, keyof QueryResultBundle> = {
   [BUNDLE_MASK_QUERY_RESULTS]: 'queryResult',
@@ -95,4 +99,45 @@ export function getDefaultColumnHandlers(
       },
     ),
   ]
+}
+
+export function getCreateColumnModelBatchHandler(
+  backendOrigin = getEndpoint(BackendDestinationEnum.REPO_ENDPOINT),
+) {
+  return rest.post(
+    `${backendOrigin}/repo/v1/column/batch`,
+    async (req, res, ctx) => {
+      const { list: columnModels } = await req.json<{ list: ColumnModel[] }>()
+      columnModels.forEach(cm => {
+        if (!cm.id) {
+          cm.id = uniqueId()
+        }
+      })
+      return res(
+        ctx.status(201),
+        ctx.json({
+          concreteType: 'org.sagebionetworks.repo.model.table.ColumnModel',
+          list: columnModels,
+        }),
+      )
+    },
+  )
+}
+
+export function getTableTransactionHandlers(
+  response: TableUpdateTransactionResponse | SynapseError,
+  backendOrigin = getEndpoint(BackendDestinationEnum.REPO_ENDPOINT),
+  statusCode?: number,
+) {
+  return generateAsyncJobHandlers<
+    TableUpdateTransactionRequest,
+    TableUpdateTransactionResponse | SynapseError
+  >(
+    `/repo/v1/entity/:entityId/table/transaction/async/start`,
+    tokenParam =>
+      `/repo/v1/entity/:entityId/table/transaction/async/get/${tokenParam}`,
+    response,
+    backendOrigin,
+    statusCode,
+  )
 }

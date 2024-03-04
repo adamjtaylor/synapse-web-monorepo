@@ -17,27 +17,38 @@ import { useSynapseContext } from '../../../utils'
 import { SkeletonTable } from '../../Skeleton'
 import dayjs from 'dayjs'
 import FullWidthAlert from '../../FullWidthAlert'
+import { isISOTimestamp } from '../../../utils/functions/DateTimeUtils'
+import { formatDate } from '../../../utils/functions/DateFormatter'
 
 export type AnnotationsTableProps = {
   readonly entityId: string
   readonly versionNumber?: number
 }
 
+function getDisplayedAnnotation(value: string | number | boolean): string {
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return value.toString()
+  } else if (isISOTimestamp(value)) {
+    return formatDate(dayjs(value))
+  }
+  return value
+}
+
 export function AnnotationsTable(props: AnnotationsTableProps) {
-  const { entityId } = props
+  const { entityId, versionNumber } = props
   const [isManuallyRefetching, setIsManuallyRefetching] = useState(false)
   /**
    * Currently, schema/validation features are only shown in experimental mode.
    */
   const { isInExperimentalMode } = useSynapseContext()
 
-  // TODO: Support versioned annotations, see PLFM-7290
   const {
-    entityMetadata,
-    annotations,
+    data: entityData,
     isLoading,
     refetch: refetchEntityData,
-  } = useGetJson(entityId, true)
+  } = useGetJson(entityId, versionNumber, true)
+  const entityMetadata = entityData?.entityMetadata
+  const annotations = entityData?.annotations
 
   const { data: boundSchema } = useGetSchemaBinding(entityId, {
     enabled: isInExperimentalMode,
@@ -92,10 +103,12 @@ export function AnnotationsTable(props: AnnotationsTableProps) {
                   <td className="AnnotationsTable__Row__Key">{key}</td>
                   <td className="AnnotationsTable__Row__Value">
                     {Array.isArray(annotations[key])
-                      ? (
-                          annotations[key] as string[] | number[] | boolean[]
-                        ).join(', ')
-                      : annotations[key]!.toString()}
+                      ? (annotations[key] as string[] | number[] | boolean[])
+                          .map(getDisplayedAnnotation)
+                          .join(', ')
+                      : getDisplayedAnnotation(
+                          annotations[key] as string | number | boolean,
+                        )}
                   </td>
                 </tr>
               )

@@ -1,6 +1,13 @@
 import React, { useState } from 'react'
 import { useGetAccessRequirements } from '../../synapse-queries/dataaccess/useAccessRequirements'
-import { SelfSignAccessRequirement } from '@sage-bionetworks/synapse-types'
+import {
+  ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  LOCK_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  SELF_SIGN_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+  SelfSignAccessRequirement,
+  TERMS_OF_USE_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE,
+} from '@sage-bionetworks/synapse-types'
 import {
   EASY_DIFFICULTY,
   MEDIUM_DIFFICULTY,
@@ -27,7 +34,7 @@ export const MeetAccessRequirementCard: React.FunctionComponent<
 > = ({ accessRequirementId, count }: MeetAccessRequirementCardProps) => {
   const { data: ar, isLoading } = useGetAccessRequirements(
     accessRequirementId,
-    { useErrorBoundary: true },
+    { throwOnError: true },
   )
   const [isShowingAccessRequirement, setIsShowingAccessRequirement] =
     useState<boolean>(false)
@@ -37,12 +44,12 @@ export const MeetAccessRequirementCard: React.FunctionComponent<
 
   if (!isLoading && ar) {
     switch (ar.concreteType) {
-      case 'org.sagebionetworks.repo.model.TermsOfUseAccessRequirement':
+      case TERMS_OF_USE_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE:
         title = TERMS_OF_USE_TITLE
         iconType = EASY_DIFFICULTY
         description = ar.name ?? ''
         break
-      case 'org.sagebionetworks.repo.model.SelfSignAccessRequirement': {
+      case SELF_SIGN_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE: {
         title = SELF_SIGN_TITLE
         const selfSignAR: SelfSignAccessRequirement = ar
         if (selfSignAR.isValidatedProfileRequired) {
@@ -55,13 +62,13 @@ export const MeetAccessRequirementCard: React.FunctionComponent<
         description = ar.name ?? ''
         break
       }
-      case 'org.sagebionetworks.repo.model.ManagedACTAccessRequirement':
-      case 'org.sagebionetworks.repo.model.ACTAccessRequirement':
+      case MANAGED_ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE:
+      case ACT_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE:
         title = ACT_TITLE
         iconType = VARIABLE_DIFFICULTY
         description = ar.name ?? ''
         break
-      case 'org.sagebionetworks.repo.model.LockAccessRequirement':
+      case LOCK_ACCESS_REQUIREMENT_CONCRETE_TYPE_VALUE:
         title = LOCK_TITLE
         iconType = VARIABLE_DIFFICULTY
         description =
@@ -89,7 +96,8 @@ export const MeetAccessRequirementCard: React.FunctionComponent<
       />
       {isShowingAccessRequirement && ar && (
         <AccessRequirementList
-          entityId={ar.subjectIds[0].id}
+          subjectId={ar.subjectIds[0].id}
+          subjectType={ar.subjectIds[0].type}
           accessRequirementFromProps={[ar]}
           renderAsModal={true}
           numberOfFilesAffected={count}

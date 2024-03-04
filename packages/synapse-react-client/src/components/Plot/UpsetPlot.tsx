@@ -17,7 +17,7 @@ import { QueryBundleRequest } from '@sage-bionetworks/synapse-types'
 import SynapseClient from '../../synapse-client'
 import { SynapseConstants } from '../../utils'
 import { SizeMe } from 'react-sizeme'
-import getColorPalette from '../ColorGradient/ColorGradient'
+import { getColorPalette } from '../ColorGradient/ColorGradient'
 import { parseEntityIdFromSqlStatement } from '../../utils/functions/SqlFunctions'
 import { ErrorBanner } from '../error/ErrorBanner'
 import loadingScreen from '../LoadingScreen/LoadingScreen'
@@ -176,7 +176,7 @@ export const UpsetPlot: React.FunctionComponent<UpsetPlotProps> = ({
                 // alternatingBackgroundColor={false}
                 setName={setName?.toUpperCase()}
                 combinationName={combinationName?.toUpperCase()}
-                fontFamily="Lato, sans-serif"
+                fontFamily="'DM Sans', sans-serif"
                 fontSizes={updateFontSizes}
                 exportButtons={false}
                 notMemberColor="transparent"

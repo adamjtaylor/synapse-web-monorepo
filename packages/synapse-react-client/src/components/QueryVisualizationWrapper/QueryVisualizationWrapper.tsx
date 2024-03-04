@@ -19,6 +19,15 @@ import useMutuallyExclusiveState from '../../utils/hooks/useMutuallyExclusiveSta
 import { useAtomValue } from 'jotai'
 import { tableQueryDataAtom } from '../QueryWrapper/QueryWrapper'
 
+type ColumnOrFacetHelpConfig = {
+  /** Text that describes the column or facet */
+  helpText: string
+  /** The name of the column for which the markdown applies */
+  columnName: string
+  /** The JSON path matching a described JSON Column facet */
+  jsonPath?: string
+}
+
 export type QueryVisualizationContextType = {
   columnsToShowInTable: string[]
   setColumnsToShowInTable: (newState: string[]) => void
@@ -28,6 +37,8 @@ export type QueryVisualizationContextType = {
   showLastUpdatedOn?: boolean
   /** Given a column name, return the display name for the column */
   getColumnDisplayName: (columnName: string, jsonPath?: string) => string
+  /** Given a column name or JSON facet, return the configured help text */
+  getHelpText: (columnName: string, jsonPath?: string) => string | undefined
   /** Given a cell value and a column type, returns the displayed value for the data */
   getDisplayValue: (value: string, columnType: ColumnType) => string
   /** React node to display in place of cards/table when there are no results. */
@@ -46,8 +57,8 @@ export type QueryVisualizationContextType = {
   setShowSqlEditor: React.Dispatch<React.SetStateAction<boolean>>
   showCopyToClipboard: boolean
   setShowCopyToClipboard: React.Dispatch<React.SetStateAction<boolean>>
-  showFacetVisualization: boolean
-  setShowFacetVisualization: React.Dispatch<React.SetStateAction<boolean>>
+  showPlots: boolean
+  setShowPlots: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 /**
@@ -97,7 +108,7 @@ export type QueryVisualizationWrapperProps = {
   columnAliases?: Record<string, string>
   visibleColumnCount?: number
   hiddenColumns?: string[]
-  defaultShowFacetVisualization?: boolean
+  defaultShowPlots?: boolean
   defaultShowSearchBar?: boolean
   showLastUpdatedOn?: boolean
   /** Default is INTERACTIVE */
@@ -108,7 +119,10 @@ export type QueryVisualizationWrapperProps = {
    */
   rowSelectionPrimaryKey?: string[]
   /* Look for additional filters using the given key.  If not provided, the entity ID will be used. */
-  additionalFiltersLocalStorageKey?: string
+  additionalFiltersSessionStorageKey?: string
+  /** Configuration to add a help popover to each corresponding column header */
+  helpConfiguration?: ColumnOrFacetHelpConfig[]
+  hasCustomPlots?: boolean
 }
 
 /**
@@ -121,8 +135,10 @@ export function QueryVisualizationWrapper(
   const {
     noContentPlaceholderType = NoContentPlaceholderType.INTERACTIVE,
     defaultShowSearchBar = false,
-    defaultShowFacetVisualization = true,
+    defaultShowPlots = true,
     unitDescription = 'result',
+    helpConfiguration,
+    hasCustomPlots = false,
   } = props
 
   const columnAliases = useMemo(
@@ -135,9 +151,7 @@ export function QueryVisualizationWrapper(
   const data = useAtomValue(tableQueryDataAtom)
 
   const [showSqlEditor, setShowSqlEditor] = useState(false)
-  const [showFacetVisualization, setShowFacetVisualization] = useState(
-    defaultShowFacetVisualization,
-  )
+  const [showPlots, setShowPlots] = useState(defaultShowPlots)
   const [showCopyToClipboard, setShowCopyToClipboard] = useState(true)
   const [showFacetFilter, setShowFacetFilter] = useState(true)
 
@@ -154,7 +168,10 @@ export function QueryVisualizationWrapper(
 
   const [visibleColumns, setVisibleColumns] = useState<string[]>([])
 
-  const lastQueryRequest = getCurrentQueryRequest()
+  const lastQueryRequest = useMemo(
+    () => getCurrentQueryRequest(),
+    [getCurrentQueryRequest],
+  )
 
   // We deep-compare-memoize the selectColumns so we don't reset visible columns when the reference changes, but not the contents (e.g. on page change)
   const selectColumns = useDeepCompareMemoize(data?.selectColumns)
@@ -174,7 +191,7 @@ export function QueryVisualizationWrapper(
       const forceDisplayOriginalColumnName =
         localStorage.getItem('force-display-original-column-names') === 'true'
 
-      if (!columnName || forceDisplayOriginalColumnName) {
+      if (!columnName || (forceDisplayOriginalColumnName && !jsonPath)) {
         return columnName
       }
       if (columnAliases[columnName]) {
@@ -198,6 +215,20 @@ export function QueryVisualizationWrapper(
     [columnAliases, data?.columnModels],
   )
 
+  const getHelpText = useCallback(
+    (columnName: string, jsonPath?: string): string | undefined => {
+      if (Array.isArray(helpConfiguration)) {
+        const helpConfig = helpConfiguration.find(
+          config =>
+            config.columnName === columnName && config.jsonPath === jsonPath,
+        )
+        return helpConfig?.helpText
+      }
+      return undefined
+    },
+    [helpConfiguration],
+  )
+
   const NoContentPlaceholder = useCallback(() => {
     switch (noContentPlaceholderType) {
       case NoContentPlaceholderType.INTERACTIVE:
@@ -206,6 +237,8 @@ export function QueryVisualizationWrapper(
         } else {
           return <ThisTableIsEmpty />
         }
+      case NoContentPlaceholderType.HIDDEN:
+        return <></>
       case NoContentPlaceholderType.STATIC:
       default:
         return <NoContentAvailable />
@@ -221,6 +254,7 @@ export function QueryVisualizationWrapper(
       showLastUpdatedOn: props.showLastUpdatedOn,
       getColumnDisplayName,
       getDisplayValue,
+      getHelpText,
       NoContentPlaceholder,
       isShowingExportToCavaticaModal,
       setIsShowingExportToCavaticaModal,
@@ -232,16 +266,15 @@ export function QueryVisualizationWrapper(
       setShowDownloadConfirmation,
       showSqlEditor,
       setShowSqlEditor,
-      showFacetVisualization: isFacetsAvailable
-        ? showFacetVisualization
-        : false,
-      setShowFacetVisualization,
+      showPlots: hasCustomPlots || isFacetsAvailable ? showPlots : false,
+      setShowPlots,
       showCopyToClipboard,
       setShowCopyToClipboard,
     }),
     [
       NoContentPlaceholder,
       getColumnDisplayName,
+      getHelpText,
       isFacetsAvailable,
       isShowingExportToCavaticaModal,
       props.rgbIndex,
@@ -251,11 +284,12 @@ export function QueryVisualizationWrapper(
       showCopyToClipboard,
       showDownloadConfirmation,
       showFacetFilter,
-      showFacetVisualization,
+      showPlots,
       showSearchBar,
       showSqlEditor,
       unitDescription,
       visibleColumns,
+      hasCustomPlots,
     ],
   )
   /**
